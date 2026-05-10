@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Select-String -Path \"d:\\\\projects\\\\scaffold\\\\workplan.md\" -Pattern \"^### Milestone\" | ForEach-Object { $_.Line })",
+      "PowerShell(& \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\pip.exe\" install ruff pytest pytest-qt --quiet; Write-Host \"Exit: $LASTEXITCODE\"; & \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\python.exe\" -m ruff --version)",
+      "PowerShell(& \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import PySide6; print\\('PySide6', PySide6.__version__\\)\" 2>&1)",
+      "PowerShell(& \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\pip.exe\" install PySide6>=6.7)",
+      "PowerShell(& \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import PySide6; print\\('PySide6', PySide6.__version__\\)\")",
+      "PowerShell(& \".venv\\\\Scripts\\\\python.exe\" -c \"import PySide6; print\\(PySide6.__version__\\)\")",
+      "PowerShell(cd d:\\\\projects\\\\scaffold; $env:PYTHONPATH = \".\"; Start-Process -FilePath \".venv\\\\Scripts\\\\pythonw.exe\" -ArgumentList \"main.py\" -PassThru | Select-Object Id, ProcessName; Start-Sleep -Seconds 3; Write-Output \"App launched\")",
+      "PowerShell(Start-Sleep -Seconds 2; $proc = Get-Process -Id 9504 -ErrorAction SilentlyContinue; if \\($proc\\) { Write-Output \"Still running: $\\($proc.Id\\)\"; Stop-Process -Id 9504 -Force } else { Write-Output \"Process ended \\(check for crash\\)\" })"
+    ]
+  }
+}

@@ -1,0 +1,196 @@
+/* ── Light theme ─────────────────────────────────────────── */
+
+QWidget {
+    background-color: #f5f5f5;
+    color: #1a1a1a;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 13px;
+}
+
+QLabel {
+    background: transparent;
+}
+
+QLineEdit {
+    background: transparent;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: #1a1a1a;
+}
+
+/* Header */
+#HeaderBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 40px;
+    max-height: 40px;
+}
+
+#HeaderBar QPushButton {
+    background: transparent;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: #444;
+    font-size: 16px;
+}
+#HeaderBar QPushButton:hover  { background-color: #eeeeee; }
+#HeaderBar QPushButton:pressed { background-color: #dddddd; }
+
+#HeaderCompactBtn {
+    background-color: #e8e8e8;
+    border: 1px solid #c8c8c8;
+    border-radius: 4px;
+    color: #333;
+    font-size: 12px;
+    padding: 0 10px;
+}
+#HeaderCompactBtn:hover  { background-color: #d8d8d8; }
+#HeaderCompactBtn:pressed { background-color: #c8c8c8; }
+
+/* Sidebar */
+#SidePanel {
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+}
+
+#SidePanel QPushButton {
+    background: transparent;
+    border: none;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 4px;
+    color: #333;
+}
+#SidePanel QPushButton:hover   { background-color: #f0f0f0; }
+#SidePanel QPushButton:checked { background-color: #e3eaf7; color: #1a56db; font-weight: 600; }
+
+/* Footer */
+#FooterBar {
+    background-color: #ffffff;
+    border-top: 1px solid #e0e0e0;
+    min-height: 24px;
+    max-height: 24px;
+}
+#FooterBar QLabel { color: #666; font-size: 11px; padding: 0 8px; background: transparent; }
+#FooterBar QPushButton {
+    background: transparent;
+    border: none;
+    color: #666;
+    font-size: 11px;
+    padding: 0 6px;
+}
+#FooterBar QPushButton:hover { color: #1a1a1a; }
+
+#LogToggleBtn {
+    background-color: #e8e8e8;
+    border: 1px solid #c8c8c8;
+    border-radius: 3px;
+    color: #444;
+    font-size: 11px;
+    padding: 0 8px;
+}
+#LogToggleBtn:hover { background-color: #d8d8d8; }
+#LogToggleBtn:pressed { background-color: #c8c8c8; }
+
+/* Log panel */
+#LogPanel {
+    background-color: #ffffff;
+    border-top: 1px solid #e0e0e0;
+}
+#LogHeader {
+    background-color: #f0f0f0;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 24px;
+    max-height: 24px;
+}
+#LogBadge {
+    color: #d97706;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+}
+#LogFilterBtn {
+    background-color: #e0e0e0;
+    border: 1px solid #c8c8c8;
+    border-radius: 3px;
+    color: #444;
+    font-size: 12px;
+    padding: 1px 4px;
+    min-height: 18px;
+}
+#LogFilterBtn:hover   { background-color: #d0d0d0; }
+#LogFilterBtn:checked { background-color: #e3eaf7; color: #1a56db; border-color: #9ab3e8; }
+#LogFilterBtn:pressed { background-color: #c0c0c0; }
+
+#LogView {
+    background-color: #fafafa;
+    color: #1a1a1a;
+    border: none;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+}
+#LogView QWidget { background-color: #fafafa; }
+
+/* Toast — styled inline per instance (level-specific border color) */
+
+/* Command palette */
+#CommandPalette {
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+#CommandPalette QLineEdit {
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: transparent;
+}
+#CommandPalette QListWidget {
+    border: none;
+    background: transparent;
+}
+#CommandPalette QListWidget::item { padding: 6px 12px; background: transparent; }
+#CommandPalette QListWidget::item:selected { background-color: #e3eaf7; color: #1a56db; }
+
+/* Notification history */
+#NotificationHistory {
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+#NotificationHistory QLabel { background: transparent; }
+
+/* Body lifecycle overlays */
+#LoadingOverlay, #ErrorOverlay {
+    background-color: rgba(245, 245, 245, 200);
+}
+
+/* Test Suite cards */
+#TestCard {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+#TestCardTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    background: transparent;
+}
+#TestCardSep {
+    color: #e0e0e0;
+    background-color: #e0e0e0;
+    max-height: 1px;
+}
+
+/* Settings panel */
+#SettingsSection QLabel#SectionTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    padding-bottom: 4px;
+    background: transparent;
+}
