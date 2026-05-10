@@ -38,11 +38,21 @@ class SettingsStore:
             json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
+    @property
+    def path(self) -> Path:
+        return self._path
+
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
+        if self._data.get(key) == value:
+            return
         self._data[key] = value
+        self._save()
+
+    def set_many(self, pairs: dict[str, Any]) -> None:
+        self._data.update(pairs)
         self._save()
 
     def all_for_prefix(self, prefix: str) -> dict[str, Any]:

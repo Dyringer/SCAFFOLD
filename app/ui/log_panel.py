@@ -9,13 +9,22 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from collections import deque
+
 from app.core.log_handler import log_relay
 from app.core.settings_store import settings_store
 from app.core.notification_bus import notification_bus
+from app.ui._notif_style import LEVEL_COLORS
 
 _MAX_ROWS = 1000
 _LEVEL_ALL = "ALL"
 _LEVELS = [_LEVEL_ALL, "INFO", "WARNING", "ERROR"]
+_FILTER_LABELS: dict[str, str] = {
+    _LEVEL_ALL: "All",
+    "INFO": "ℹ",
+    "WARNING": "▲",
+    "ERROR": "✕",
+}
 
 
 class LogPanel(QWidget):
@@ -30,7 +39,7 @@ class LogPanel(QWidget):
         self._unread = 0
         self._auto_scroll = True
         self._row_count = 0
-        self._records: list[logging.LogRecord] = []
+        self._records: deque[logging.LogRecord] = deque(maxlen=_MAX_ROWS)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -49,7 +58,7 @@ class LogPanel(QWidget):
 
         self._filter_btns: dict[str, QPushButton] = {}
         for lvl in _LEVELS:
-            btn = QPushButton({"ALL": "All", "INFO": "ℹ", "WARNING": "▲", "ERROR": "✕"}.get(lvl, lvl))
+            btn = QPushButton(_FILTER_LABELS.get(lvl, lvl))
             btn.setObjectName("LogFilterBtn")
             btn.setFlat(False)
             btn.setCheckable(True)
@@ -85,9 +94,9 @@ class LogPanel(QWidget):
         self._text.hide()
         outer.addWidget(self._text)
 
-        self._splitter = None  # set by window after construction
+        self._splitter = None
         self._expanded_height = settings_store.get("app.log_panel_height", 200)
-        self._badge_callback = None  # callable(int) — set by window to update footer btn
+        self._badge_callback = None
 
         log_relay.record_emitted.connect(self._on_record)
 
@@ -95,6 +104,9 @@ class LogPanel(QWidget):
 
     def set_splitter(self, splitter) -> None:
         self._splitter = splitter
+
+    def set_badge_callback(self, cb) -> None:
+        self._badge_callback = cb
 
     def toggle(self) -> None:
         self._expanded = not self._expanded
@@ -137,10 +149,10 @@ class LogPanel(QWidget):
 
         fmt = QTextCharFormat()
         if record.levelno >= logging.ERROR:
-            fmt.setForeground(QColor("#ef4444"))
+            fmt.setForeground(QColor(LEVEL_COLORS["error"]))
             fmt.setBackground(QColor("#fff0f0"))
         elif record.levelno >= logging.WARNING:
-            fmt.setForeground(QColor("#f59e0b"))
+            fmt.setForeground(QColor(LEVEL_COLORS["warning"]))
 
         cursor = self._text.textCursor()
         cursor.movePosition(QTextCursor.End)
@@ -167,8 +179,6 @@ class LogPanel(QWidget):
 
     def _on_record(self, record: logging.LogRecord) -> None:
         self._records.append(record)
-        if len(self._records) > _MAX_ROWS:
-            self._records.pop(0)
 
         if self._filter == _LEVEL_ALL or record.levelname == self._filter:
             self._append_record(record)
@@ -184,8 +194,8 @@ class LogPanel(QWidget):
         if record.levelno >= logging.WARNING:
             notify = settings_store.get("app.log_notify", False)
             if notify:
-                lvl = "error" if record.levelno >= logging.ERROR else "warning"
-                notification_bus.notify.emit(lvl, record.name, record.getMessage())
+                level_key = "error" if record.levelno >= logging.ERROR else "warning"
+                notification_bus.notify.emit(level_key, record.name, record.getMessage())
 
     @staticmethod
     def _format_time(record: logging.LogRecord) -> str:

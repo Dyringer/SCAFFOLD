@@ -63,3 +63,8 @@ desktop.ini
 # Logs
 *.log
 logs/
+
+.claude
+TODO.md
+workplan.md
+settings.json

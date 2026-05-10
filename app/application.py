@@ -45,11 +45,13 @@ def _configure_logging() -> None:
 def _register_subapps() -> None:
     from app.subapps.counter.core import CounterSubApp
     from app.subapps.dummy.core import DummySubApp
+    from app.subapps.programmer_calc.core import ProgrammerCalcSubApp
     from app.subapps.secret.core import SecretSubApp
     from app.subapps.settings.core import SettingsSubApp
 
     registry.register(CounterSubApp())
     registry.register(DummySubApp())
+    registry.register(ProgrammerCalcSubApp())
     registry.register(SecretSubApp())
     registry.register(SettingsSubApp())
 

@@ -8,7 +8,12 @@ from PySide6.QtWidgets import (
 from app.core.base_subapp import BaseSubApp, SubAppState
 
 
-class _LoadingOverlay(QWidget):
+class _ParentFillOverlay(QWidget):
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        self.setGeometry(self.parent().rect())  # type: ignore[union-attr]
+
+
+class _LoadingOverlay(_ParentFillOverlay):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("LoadingOverlay")
@@ -19,11 +24,8 @@ class _LoadingOverlay(QWidget):
         lbl.setStyleSheet("font-size: 18px;")
         layout.addWidget(lbl)
 
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        self.setGeometry(self.parent().rect())  # type: ignore[union-attr]
 
-
-class _ErrorOverlay(QWidget):
+class _ErrorOverlay(_ParentFillOverlay):
     def __init__(self, message: str, retry_callback, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("ErrorOverlay")
@@ -43,9 +45,6 @@ class _ErrorOverlay(QWidget):
         layout.addWidget(icon)
         layout.addWidget(msg)
         layout.addWidget(retry_btn, alignment=Qt.AlignCenter)
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        self.setGeometry(self.parent().rect())  # type: ignore[union-attr]
 
 
 class BodyStack(QWidget):
@@ -105,10 +104,7 @@ class BodyStack(QWidget):
             self._overlay.raise_()
         elif state == SubAppState.ERROR:
             msg = "An error occurred."
-            if self._active_subapp:
-                retry = self._active_subapp.on_activated
-            else:
-                retry = lambda: None
+            retry = self._active_subapp.on_activated
             self._overlay = _ErrorOverlay(msg, retry, current)
             self._overlay.resize(current.size())
             self._overlay.show()

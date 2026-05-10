@@ -37,6 +37,9 @@ class FooterBar(QWidget):
 
         self._active_subapp: BaseSubApp | None = None
 
+    def set_log_badge(self, count: int) -> None:
+        self._log_btn.setText(f"Logs ● {count}" if count else "Logs")
+
     def connect_subapp(self, subapp: BaseSubApp) -> None:
         if self._active_subapp is not None:
             try:

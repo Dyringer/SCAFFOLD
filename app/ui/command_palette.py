@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QSizePolicy, QVBoxLayout, QWidget,
+    QLineEdit, QListWidget, QListWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from app.core.base_subapp import CommandDef
@@ -69,11 +69,6 @@ class CommandPalette(QWidget):
                 continue
             item = QListWidgetItem(f"  ▶  {subapp.name}")
             item.setData(Qt.UserRole, ("subapp", subapp.id, None))
-            right = QWidget()
-            rl = QHBoxLayout(right)
-            rl.setContentsMargins(0, 0, 4, 0)
-            rl.addStretch()
-            rl.addWidget(QLabel("sub-app"))
             self._list.addItem(item)
 
         for cmd in self._subapp_commands:

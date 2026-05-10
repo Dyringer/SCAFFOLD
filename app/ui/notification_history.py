@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -10,9 +11,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.notification_bus import notification_bus
+from app.ui._notif_style import LEVEL_COLORS, LEVEL_ICONS
 
 _MAX_HISTORY = 100
-_ICONS = {"info": "ℹ", "warning": "▲", "error": "✕"}
 _PANEL_W = 320
 _PANEL_MAX_H = 360
 
@@ -35,7 +36,7 @@ class NotificationHistory(QFrame):
         self.setMaximumHeight(_PANEL_MAX_H)
         self.hide()
 
-        self._entries: list[_Entry] = []
+        self._entries: deque[_Entry] = deque(maxlen=_MAX_HISTORY)
         self._unread = 0
 
         outer = QVBoxLayout(self)
@@ -86,13 +87,13 @@ class NotificationHistory(QFrame):
     # ------------------------------------------------------------------
 
     def _on_notify(self, level: str, title: str, message: str) -> None:
+        if len(self._entries) == _MAX_HISTORY:
+            item = self._list_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
         entry = _Entry(level, title, message)
         self._entries.append(entry)
-        if len(self._entries) > _MAX_HISTORY:
-            self._entries = self._entries[-_MAX_HISTORY:]
-            self._rebuild()
-        else:
-            self._add_row(entry)
+        self._add_row(entry)
         self._update_empty_state()
         if not self.isVisible():
             self._unread += 1
@@ -104,8 +105,8 @@ class NotificationHistory(QFrame):
         rl.setContentsMargins(10, 7, 10, 7)
         rl.setSpacing(8)
 
-        icon = _ICONS.get(entry.level, "ℹ")
-        color = {"info": "#3b82f6", "warning": "#f59e0b", "error": "#ef4444"}.get(entry.level, "#3b82f6")
+        icon = LEVEL_ICONS.get(entry.level, "ℹ")
+        color = LEVEL_COLORS.get(entry.level, LEVEL_COLORS["info"])
         icon_lbl = QLabel(icon)
         icon_lbl.setFixedWidth(14)
         icon_lbl.setStyleSheet(f"color: {color}; font-size: 12px;")
@@ -123,15 +124,6 @@ class NotificationHistory(QFrame):
 
         # insert before the trailing stretch
         self._list_layout.insertWidget(self._list_layout.count() - 1, row)
-
-    def _rebuild(self) -> None:
-        # remove all rows (everything before the trailing stretch)
-        while self._list_layout.count() > 1:
-            item = self._list_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        for entry in self._entries:
-            self._add_row(entry)
 
     def _clear_all(self) -> None:
         self._entries.clear()

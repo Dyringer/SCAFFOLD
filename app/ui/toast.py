@@ -6,16 +6,13 @@ from PySide6.QtCore import (
     Property, QEasingCurve, QObject, QPropertyAnimation, QRect, Qt, QTimer,
 )
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel, QVBoxLayout, QWidget
 
 from app.core.notification_bus import notification_bus
+from app.ui._notif_style import LEVEL_COLORS, LEVEL_ICONS
 
-_LEVEL_COLORS = {
-    "info":    "#3b82f6",
-    "warning": "#f59e0b",
-    "error":   "#ef4444",
-}
-_ICONS = {"info": "ℹ", "warning": "▲", "error": "✕"}
+_LEVEL_COLORS = LEVEL_COLORS
+_ICONS = LEVEL_ICONS
 _MAX_VISIBLE = 5
 _DISMISS_MS = 4000
 _FADE_MS = 300
@@ -60,17 +57,16 @@ class ToastWidget(QWidget):
         self.adjustSize()
         self.setFixedWidth(_WIDTH)
 
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity_effect)
+
     def get_opacity(self) -> float:
         return self._opacity
 
     def set_opacity(self, value: float) -> None:
         self._opacity = value
-        from PySide6.QtWidgets import QGraphicsOpacityEffect
-        effect = self.graphicsEffect()
-        if not isinstance(effect, QGraphicsOpacityEffect):
-            effect = QGraphicsOpacityEffect(self)
-            self.setGraphicsEffect(effect)
-        effect.setOpacity(value)
+        self._opacity_effect.setOpacity(value)
 
     opacity = Property(float, get_opacity, set_opacity)
 

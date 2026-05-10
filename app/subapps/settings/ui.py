@@ -73,7 +73,7 @@ class SettingsHeaderWidget(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Export settings", "", "JSON (*.json)")
         if path:
             import shutil
-            shutil.copy(settings_store._path, path)
+            shutil.copy(settings_store.path, path)
 
     def _import(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Import settings", "", "JSON (*.json)")
@@ -83,8 +83,7 @@ class SettingsHeaderWidget(QWidget):
             import json
             from pathlib import Path
             data = json.loads(Path(path).read_text(encoding="utf-8"))
-            for k, v in data.items():
-                settings_store.set(k, v)
+            settings_store.set_many(data)
         except Exception as exc:
             from app.core.notification_bus import notification_bus
             notification_bus.notify.emit("error", "Import failed", str(exc))

@@ -44,11 +44,12 @@ class MainWindow(QWidget):
         # tray (must be after window is fully built)
         self._tray = SystemTrayIcon(self)
 
-        # wire registry back-references
-        registry._header = self._header
-        registry._body_stack = self._body_stack
-        registry._footer = self._footer
-        registry._command_palette = self._palette
+        registry.bind_ui(
+            header=self._header,
+            body_stack=self._body_stack,
+            footer=self._footer,
+            command_palette=self._palette,
+        )
         registry.subapp_registered.connect(self._on_subapp_registered)
         registry.subapp_activated.connect(self._sidebar.set_active)
 
@@ -85,7 +86,7 @@ class MainWindow(QWidget):
         self._vsplitter.setStretchFactor(1, 0)
         self._vsplitter.setSizes([_DEFAULT_H - 40 - 24, 0])  # upper | log (collapsed)
         self._log_panel.set_splitter(self._vsplitter)
-        self._log_panel._badge_callback = self._update_log_badge
+        self._log_panel.set_badge_callback(self._update_log_badge)
 
         root.addWidget(self._vsplitter, 1)
 
@@ -110,7 +111,7 @@ class MainWindow(QWidget):
         self._header.minimize_requested.connect(self.showMinimized)
         self._header.exit_requested.connect(QApplication.quit)
         self._header.notifications_toggled.connect(
-            lambda: self._notif_history.toggle(self._header._notif_btn)
+            lambda: self._notif_history.toggle(self._header.notif_button)
         )
         self._sidebar.subapp_selected.connect(registry.activate)
         self._footer.log_toggled.connect(self._log_panel.toggle)
@@ -128,10 +129,7 @@ class MainWindow(QWidget):
     # subapp registration callback
 
     def _update_log_badge(self, count: int) -> None:
-        if count:
-            self._footer._log_btn.setText(f"Logs ● {count}")
-        else:
-            self._footer._log_btn.setText("Logs")
+        self._footer.set_log_badge(count)
 
     def _on_subapp_registered(self, subapp) -> None:
         if not subapp.hidden:
@@ -170,11 +168,14 @@ class MainWindow(QWidget):
             self.move(pos[0], pos[1])
 
     def _save_geometry(self) -> None:
-        settings_store.set("window.geometry", [self.width(), self.height()])
-        settings_store.set("window.pos", [self.x(), self.y()])
+        update: dict = {
+            "window.geometry": [self.width(), self.height()],
+            "window.pos": [self.x(), self.y()],
+        }
         lp_sizes = self._vsplitter.sizes()
         if len(lp_sizes) > 1 and lp_sizes[1] > 0:
-            settings_store.set("app.log_panel_height", lp_sizes[1])
+            update["app.log_panel_height"] = lp_sizes[1]
+        settings_store.set_many(update)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._save_geometry()

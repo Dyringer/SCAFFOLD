@@ -74,12 +74,10 @@ class CounterSubApp(BaseSubApp):
     # logic
 
     def increment(self) -> None:
-        self._step = settings_store.get("counter.step", 1)
         self._count += self._step
         self._sync()
 
     def decrement(self) -> None:
-        self._step = settings_store.get("counter.step", 1)
         self._count -= self._step
         self._sync()
 

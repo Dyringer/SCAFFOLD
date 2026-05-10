@@ -27,6 +27,23 @@ class Registry(QObject):
         self._shortcut_manager: object = None
 
     # ------------------------------------------------------------------
+    # UI wiring
+    # ------------------------------------------------------------------
+
+    def bind_ui(
+        self,
+        *,
+        header,
+        body_stack,
+        footer,
+        command_palette,
+    ) -> None:
+        self._header = header
+        self._body_stack = body_stack
+        self._footer = footer
+        self._command_palette = command_palette
+
+    # ------------------------------------------------------------------
     # registration
     # ------------------------------------------------------------------
 

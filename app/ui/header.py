@@ -89,6 +89,10 @@ class HeaderBar(QWidget):
             self._widgets[widget_id] = widget
         self._universal.setCurrentWidget(widget)
 
+    @property
+    def notif_button(self) -> QPushButton:
+        return self._notif_btn
+
     def set_notification_badge(self, count: int) -> None:
         if count:
             self._notif_btn.setText(f"🔔{count}")
