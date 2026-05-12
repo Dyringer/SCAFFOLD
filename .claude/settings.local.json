@@ -8,7 +8,18 @@
       "PowerShell(& \"d:\\\\projects\\\\scaffold\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import PySide6; print\\('PySide6', PySide6.__version__\\)\")",
       "PowerShell(& \".venv\\\\Scripts\\\\python.exe\" -c \"import PySide6; print\\(PySide6.__version__\\)\")",
       "PowerShell(cd d:\\\\projects\\\\scaffold; $env:PYTHONPATH = \".\"; Start-Process -FilePath \".venv\\\\Scripts\\\\pythonw.exe\" -ArgumentList \"main.py\" -PassThru | Select-Object Id, ProcessName; Start-Sleep -Seconds 3; Write-Output \"App launched\")",
-      "PowerShell(Start-Sleep -Seconds 2; $proc = Get-Process -Id 9504 -ErrorAction SilentlyContinue; if \\($proc\\) { Write-Output \"Still running: $\\($proc.Id\\)\"; Stop-Process -Id 9504 -Force } else { Write-Output \"Process ended \\(check for crash\\)\" })"
+      "PowerShell(Start-Sleep -Seconds 2; $proc = Get-Process -Id 9504 -ErrorAction SilentlyContinue; if \\($proc\\) { Write-Output \"Still running: $\\($proc.Id\\)\"; Stop-Process -Id 9504 -Force } else { Write-Output \"Process ended \\(check for crash\\)\" })",
+      "Bash(Get-ChildItem -Path \"d:\\\\projects\\\\scaffold\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\projects\\\\scaffold\\\\app\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Format-Table -AutoSize)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c \"import PySide6.QtWidgets as w; import sys; app = w.QApplication\\(sys.argv\\); [print\\(m\\) for m in dir\\(w.QStyle\\) if m.startswith\\('SP_'\\)]\")",
+      "Bash(.venv/Scripts/python.exe -m pip show PySide6)",
+      "Bash(.venv/Scripts/python.exe -c \"from PySide6.QtWidgets import QStyle; print\\([x for x in dir\\(QStyle\\) if 'SP_' in x][:20]\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(.venv/Scripts/python -c ' *)",
+      "Bash(.venv/Scripts/python -m py_compile app/subapps/games_hub/games/bomberman/game.py)"
     ]
   }
 }

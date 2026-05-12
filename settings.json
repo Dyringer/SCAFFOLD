@@ -1,14 +1,16 @@
 {
-  "app.last_subapp": "settings",
+  "app.last_subapp": "games_hub",
   "window.geometry": [
-    1068,
-    766
+    968,
+    767
   ],
   "window.pos": [
-    538,
-    372
+    701,
+    397
   ],
   "app.theme": "dark",
   "app.log_panel_height": 85,
-  "counter.step": 5
+  "counter.step": 5,
+  "programmer_calc.history": "[{\"expr\": \"9 >> 0xA & 7\", \"result\": 0}, {\"expr\": \"9 >> 0xA & 7\", \"result\": 0}, {\"expr\": \"9 >> 0xA & 7\", \"result\": 0}, {\"expr\": \"10000 - 0x45 >> 2\", \"result\": 2482}, {\"expr\": \"10 - 0x45 >> 2\", \"result\": -15}]",
+  "bomberman.debug_bot_path": true
 }

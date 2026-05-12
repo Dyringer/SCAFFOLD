@@ -194,3 +194,81 @@ QLineEdit {
     padding-bottom: 4px;
     background: transparent;
 }
+
+/* ── Games Hub ──────────────────────────────────────────────── */
+
+/* Hub game card */
+#GameCard {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+}
+#GameCard:hover {
+    background-color: #f0f4ff;
+    border-color: #1a56db;
+}
+
+/* In-game top bar */
+#GameTopBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+/* Game-over overlay card */
+#GameOverCard {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+}
+#GameOverTitle {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #dc2626;
+}
+#GameOverGameName {
+    font-size: 13px;
+    color: #888;
+}
+#GameOverScore {
+    font-size: 48px;
+    font-weight: 700;
+    color: #1a56db;
+}
+#GameOverScoreSub {
+    font-size: 16px;
+    color: #555;
+}
+#GameOverBest {
+    font-size: 12px;
+    color: #888;
+}
+#GameOverNewBest {
+    font-size: 13px;
+    font-weight: 600;
+    color: #d97706;
+}
+#GameOverSep {
+    background-color: #e0e0e0;
+}
+#GameOverRetryBtn {
+    background-color: #e3eaf7;
+    color: #1a56db;
+    border: 1px solid #9ab3e8;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+}
+#GameOverRetryBtn:hover  { background-color: #d0dcf5; }
+#GameOverRetryBtn:pressed { background-color: #bfcfee; }
+#GameOverHubBtn {
+    background-color: transparent;
+    color: #666;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
+}
+#GameOverHubBtn:hover  { background-color: #f0f0f0; color: #333; }
+#GameOverHubBtn:pressed { background-color: #e0e0e0; }

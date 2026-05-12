@@ -45,12 +45,23 @@ def _configure_logging() -> None:
 def _register_subapps() -> None:
     from app.subapps.counter.core import CounterSubApp
     from app.subapps.dummy.core import DummySubApp
+    from app.subapps.games_hub.core import GamesHubSubApp
     from app.subapps.programmer_calc.core import ProgrammerCalcSubApp
     from app.subapps.secret.core import SecretSubApp
     from app.subapps.settings.core import SettingsSubApp
 
+    # Import game modules so their @register_game decorators fire
+    import app.subapps.games_hub.games.tetris.game         # noqa: F401
+    import app.subapps.games_hub.games.pong.game           # noqa: F401
+    import app.subapps.games_hub.games.snake.game          # noqa: F401
+    import app.subapps.games_hub.games.breakout.game       # noqa: F401
+    import app.subapps.games_hub.games.space_invaders.game # noqa: F401
+    import app.subapps.games_hub.games.asteroids.game      # noqa: F401
+    import app.subapps.games_hub.games.bomberman.game     # noqa: F401
+
     registry.register(CounterSubApp())
     registry.register(DummySubApp())
+    registry.register(GamesHubSubApp())
     registry.register(ProgrammerCalcSubApp())
     registry.register(SecretSubApp())
     registry.register(SettingsSubApp())
