@@ -32,6 +32,10 @@ PLAT_H         = 12
 PLAT_MIN_W     = 40
 PLAT_STEP_Y    = 56       # vertical gap between successive platforms (world units)
 
+# Segment lengths in floors (random range)
+SEG_MIN        = 20
+SEG_MAX        = 100
+
 # Scroll speed brackets — (min_floor, scroll_px_per_frame)
 _SPEED_BRACKETS = [
     (0,   0.0),
@@ -63,15 +67,47 @@ class Platform:
 
 
 @dataclass
+class Segment:
+    """A vertical band of the tower with consistent wall behaviour."""
+    floor_start: int
+    floor_end: int      # exclusive
+    walled: bool
+
+    def contains(self, floor: int) -> bool:
+        return self.floor_start <= floor < self.floor_end
+
+    @property
+    def y_top(self) -> float:
+        """World Y of the TOP of this segment (smaller Y = higher up)."""
+        return PLAT_START_Y - self.floor_end * PLAT_STEP_Y
+
+    @property
+    def y_bottom(self) -> float:
+        """World Y of the BOTTOM of this segment."""
+        return PLAT_START_Y - self.floor_start * PLAT_STEP_Y
+
+
+def _next_segment(prev: Segment) -> Segment:
+    length = random.randint(SEG_MIN, SEG_MAX)
+    return Segment(
+        floor_start=prev.floor_end,
+        floor_end=prev.floor_end + length,
+        walled=not prev.walled,   # alternate
+    )
+
+
+@dataclass
 class IcyTowerState:
     px: float                       # player left edge (world coords)
     py: float                       # player top edge (world coords)
     vx: float
     vy: float
     on_ground: bool
+    on_wall: int                    # -1 = left wall, 0 = none, 1 = right wall
     holding_left: bool
     holding_right: bool
     platforms: list[Platform]
+    segments: list[Segment]
     camera_y: float                 # world y at top of screen
     floor: int                      # highest platform index ever landed
     score: int
@@ -82,25 +118,38 @@ class IcyTowerState:
     PLAYER_W: float = 28.0
     PLAYER_H: float = 36.0
 
+    def walled_at(self, py: float) -> bool:
+        """Return True if the world Y position is inside a walled segment."""
+        for seg in self.segments:
+            if seg.y_top <= py <= seg.y_bottom:
+                return seg.walled
+        return False
+
     @staticmethod
     def new() -> "IcyTowerState":
         ground = Platform(x=10, y=PLAT_START_Y, w=PLAT_START_W, idx=0)
         platforms = [ground]
 
-        # Pre-generate enough platforms to fill two screens worth
+        # Pre-generate platforms to fill two screens
         next_y = PLAT_START_Y - PLAT_STEP_Y
         for i in range(1, 30):
             platforms.append(_gen_platform(next_y, i))
             next_y -= PLAT_STEP_Y
 
+        # First segment is open (no walls), alternates from there
+        seg0 = Segment(floor_start=0, floor_end=random.randint(SEG_MIN, SEG_MAX), walled=False)
+        seg1 = _next_segment(seg0)
+        seg2 = _next_segment(seg1)
+
         px = WORLD_W / 2 - 14
-        py = ground.y - 36  # standing on ground
+        py = ground.y - 36
 
         return IcyTowerState(
             px=px, py=py, vx=0, vy=0,
-            on_ground=True,
+            on_ground=True, on_wall=0,
             holding_left=False, holding_right=False,
             platforms=platforms,
+            segments=[seg0, seg1, seg2],
             camera_y=py - SCREEN_H * 0.35,
             floor=0, score=0,
             scroll_speed=0.0,
@@ -110,7 +159,6 @@ class IcyTowerState:
 
 
 def _plat_width(floor_idx: int) -> float:
-    """Platform width narrows as floor index grows."""
     if floor_idx < 10:
         return random.uniform(160, WORLD_W - 40)
     if floor_idx < 25:
@@ -185,10 +233,15 @@ class IcyTowerGame(BaseGame):
             s.holding_left = True
         elif action == Action.RIGHT:
             s.holding_right = True
-        elif action == Action.FIRE and s.on_ground:
-            running = abs(s.vx) >= RUN_THRESHOLD
-            s.vy = JUMP_VY + (RUN_JUMP_BONUS if running else 0.0)
-            s.on_ground = False
+        elif action == Action.FIRE:
+            if s.on_ground:
+                running = abs(s.vx) >= RUN_THRESHOLD
+                s.vy = JUMP_VY + (RUN_JUMP_BONUS if running else 0.0)
+                s.on_ground = False
+            elif s.on_wall != 0:
+                s.vy = JUMP_VY
+                s.vx = -s.on_wall * WALK_VX * 1.4
+                s.on_wall = 0
 
     def key_release(self, action: Action, slot: PlayerSlot) -> None:
         s = self._state
@@ -201,6 +254,7 @@ class IcyTowerGame(BaseGame):
 
     def _tick(self) -> None:
         s = self._state
+        walled = s.walled_at(s.py)
 
         # Horizontal movement
         if s.holding_left:
@@ -212,19 +266,37 @@ class IcyTowerGame(BaseGame):
 
         s.vx = max(-WALK_VX * 1.6, min(WALK_VX * 1.6, s.vx))
 
-        # Gravity
-        s.vy += GRAVITY
+        # Gravity — reduced when sliding down a wall
+        if s.on_wall != 0 and s.vy > 0:
+            s.vy += GRAVITY * 0.35
+            s.vy = min(s.vy, 3.0)
+        else:
+            s.vy += GRAVITY
         s.on_ground = False
+        s.on_wall = 0
 
         # Move player
         s.px += s.vx
         s.py += s.vy
 
-        # Wrap horizontally
-        if s.px + s.PLAYER_W < 0:
-            s.px = WORLD_W
-        elif s.px > WORLD_W:
-            s.px = -s.PLAYER_W
+        # Horizontal boundary — walls or open depending on segment
+        if walled:
+            if s.px <= 0:
+                s.px = 0
+                if s.vy > 0 and s.holding_left:
+                    s.on_wall = -1
+                s.vx = 0.0
+            elif s.px + s.PLAYER_W >= WORLD_W:
+                s.px = WORLD_W - s.PLAYER_W
+                if s.vy > 0 and s.holding_right:
+                    s.on_wall = 1
+                s.vx = 0.0
+        else:
+            # Open section — wrap around
+            if s.px + s.PLAYER_W < 0:
+                s.px = WORLD_W
+            elif s.px > WORLD_W:
+                s.px = -s.PLAYER_W
 
         # Platform collision (landing on top only, while falling)
         if s.vy >= 0:
@@ -245,30 +317,30 @@ class IcyTowerGame(BaseGame):
                     break
 
         # Scroll camera upward when player is in the top 40%
-        top_threshold = s.camera_y + SCREEN_H * 0.35
-        if s.py < top_threshold:
+        if s.py < s.camera_y + SCREEN_H * 0.35:
             s.camera_y = s.py - SCREEN_H * 0.35
 
-        # Enforce minimum scroll speed (platforms drift down even if player is stationary)
         if s.scroll_speed > 0:
             s.camera_y += s.scroll_speed
-            # Also push platforms down visually (move world coords down = camera up is equivalent,
-            # but we nudge camera so player falls toward death zone if not climbing)
 
-        # Death: player bottom went below bottom of screen
+        # Death: player fell below screen
         if s.py > s.camera_y + SCREEN_H + 60:
             self._die()
             return
 
-        # Generate more platforms above as needed
+        # Generate platforms above as needed
         while s.next_plat_y > s.camera_y - SCREEN_H:
             s.platforms.append(_gen_platform(s.next_plat_y, s.next_plat_idx))
             s.next_plat_y -= PLAT_STEP_Y
             s.next_plat_idx += 1
 
-        # Cull platforms well below the screen
-        cutoff = s.camera_y + SCREEN_H + 200
-        s.platforms = [p for p in s.platforms if p.y < cutoff]
+        # Extend segments ahead of the highest generated floor
+        while s.segments[-1].floor_end < s.next_plat_idx + SEG_MAX:
+            s.segments.append(_next_segment(s.segments[-1]))
+
+        # Cull platforms and segments well below the screen
+        cutoff_y = s.camera_y + SCREEN_H + 200
+        s.platforms = [p for p in s.platforms if p.y < cutoff_y]
 
         if self._widget is not None:
             self._widget.update()
