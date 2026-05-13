@@ -1,6 +1,6 @@
 # S.C.A.F.F.O.L.D.
 
-**S**ome **C**ross-platform **A**pp **F**ramework **O**f **L**oosely **D**efined decisions
+**S**ome **C**ross-platform **A**pp **F**ramework **F**or **O**rganising **L**oosely-coupled **D**evelopment
 
 A PySide6 / Python 3.14 desktop shell that acts as a host for pluggable sub-apps.
 Custom chrome, extensible registry, aggregated settings, toast notifications,
