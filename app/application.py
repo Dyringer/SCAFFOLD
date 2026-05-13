@@ -57,6 +57,7 @@ def _register_subapps() -> None:
     import app.subapps.games_hub.games.asteroids.game      # noqa: F401
     import app.subapps.games_hub.games.bomberman.game          # noqa: F401
     import app.subapps.games_hub.games.asteroidsbomber.game    # noqa: F401
+    import app.subapps.games_hub.games.icy_tower.game          # noqa: F401
 
     registry.register(CounterSubApp())
     registry.register(DummySubApp())

@@ -19,9 +19,6 @@ lib64/
 
 # Virtual environments
 .venv/
-venv/
-env/
-ENV/
 
 # PyInstaller
 *.spec
@@ -43,29 +40,12 @@ coverage.xml
 *.cover
 *.py,cover
 
-# Environments
-.env
-.env.local
-.env.*.local
-
 # IDEs
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
 
 # Logs
 *.log
 logs/
-
-TODO.md
-workplan.md
 
 # Runtime data (settings, scores, logs)
 .local/
