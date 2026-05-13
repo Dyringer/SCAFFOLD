@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
@@ -14,9 +13,8 @@ from app.core.registry import registry
 
 
 def _log_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path.cwd()
+    from app.core.resource_manager import local_dir
+    return local_dir()
 
 
 def _configure_logging() -> None:
@@ -57,7 +55,8 @@ def _register_subapps() -> None:
     import app.subapps.games_hub.games.breakout.game       # noqa: F401
     import app.subapps.games_hub.games.space_invaders.game # noqa: F401
     import app.subapps.games_hub.games.asteroids.game      # noqa: F401
-    import app.subapps.games_hub.games.bomberman.game     # noqa: F401
+    import app.subapps.games_hub.games.bomberman.game          # noqa: F401
+    import app.subapps.games_hub.games.asteroidsbomber.game    # noqa: F401
 
     registry.register(CounterSubApp())
     registry.register(DummySubApp())

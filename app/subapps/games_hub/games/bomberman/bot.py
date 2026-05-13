@@ -165,22 +165,21 @@ def _dijkstra_step(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def bot_path(state: BombermanState) -> list[tuple[int, int]]:
-    """Return the full Dijkstra path from the bot to P1 (debug use only).
+def bot_path(state: BombermanState) -> tuple[list[tuple[int, int]], int]:
+    """Return (path, total_cost) from the bot to P1 (debug use only).
 
-    Runs a fresh Dijkstra and reconstructs the complete cell list from the
-    bot's current position to P1, or an empty list if either player is dead
-    or no path exists.
+    path       – full cell list from bot to P1, or [] if unreachable.
+    total_cost – weighted Dijkstra cost (empty steps + crate penalties).
     """
     bot = state.players[PlayerSlot.P2]
     p1  = state.players[PlayerSlot.P1]
     if not bot.alive or not p1.alive:
-        return []
+        return [], 0
 
     sr, sc = bot.row, bot.col
     tr, tc = p1.row, p1.col
     if (sr, sc) == (tr, tc):
-        return []
+        return [], 0
 
     _, explosion_zone = _danger_cells(
         state.grid, state.bombs, state.explosions,
@@ -219,7 +218,7 @@ def bot_path(state: BombermanState) -> list[tuple[int, int]]:
                 heapq.heappush(pq, (nd, nr, nc))
 
     if not found:
-        return []
+        return [], 0
 
     path: list[tuple[int, int]] = []
     cur: tuple[int, int] | None = (tr, tc)
@@ -227,7 +226,7 @@ def bot_path(state: BombermanState) -> list[tuple[int, int]]:
         path.append(cur)
         cur = prev[cur]
     path.reverse()
-    return path
+    return path, dist[(tr, tc)]
 
 
 def _free_path_exists(

@@ -1,14 +1,13 @@
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from app.core.resource_manager import local_dir
+
 
 def _settings_path() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "settings.json"
-    return Path.cwd() / "settings.json"
+    return local_dir() / "settings.json"
 
 
 @dataclass

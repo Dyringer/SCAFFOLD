@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+from app.core.resource_manager import local_dir
+
 
 def _scores_path() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "scores.json"
-    return Path.cwd() / "scores.json"
+    return local_dir() / "scores.json"
 
 
 @dataclass

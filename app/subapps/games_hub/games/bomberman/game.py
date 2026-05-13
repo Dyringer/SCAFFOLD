@@ -357,7 +357,11 @@ class BombermanGame(BaseGame):
             # the area is clear, then update from the new position.
             bot = self._state.players[PlayerSlot.P2]
             if bot.bombs_placed == 0:
-                self._bot_debug_path = bot_path(self._state)
+                new_path, cost = bot_path(self._state)
+                if new_path:
+                    steps = len(new_path) - 1
+                    print(f"[bot] path recalculated: {steps} steps, cost {cost}")
+                    self._bot_debug_path = new_path
         else:
             self._bot_debug_path = []
         if self._widget is not None:

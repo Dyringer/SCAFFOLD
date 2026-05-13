@@ -64,7 +64,11 @@ desktop.ini
 *.log
 logs/
 
-.claude
 TODO.md
 workplan.md
-settings.json
+
+# Runtime data (settings, scores, logs)
+.local/
+
+.ruff_cache/
+.claude/
