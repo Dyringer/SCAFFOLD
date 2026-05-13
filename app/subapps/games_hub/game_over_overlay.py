@@ -121,6 +121,18 @@ class GameOverOverlay(QWidget):
 
         layout.addWidget(card)
 
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self.retry_clicked.emit()
+        elif event.key() == Qt.Key_Escape:
+            self.hub_clicked.emit()
+        else:
+            super().keyPressEvent(event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self.setFocus()
+
     def paintEvent(self, event) -> None:  # noqa: N802
         # Semi-transparent scrim using theme background color
         p = QPainter(self)
