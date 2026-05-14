@@ -90,8 +90,6 @@ class BreakoutGame(BaseGame):
     game_id = "breakout"
     display_name = "Breakout"
     icon_char = "🧱"
-    max_players = 1
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -227,7 +225,7 @@ class BreakoutGame(BaseGame):
             s.ball_vx *= norm
             s.ball_vy *= norm
 
-        self.score_tick.emit({"p1": s.score})
+        self.score_tick.emit(f"Score: {s.score:,}")
         self._sync()
 
     def _check_bricks(self) -> None:

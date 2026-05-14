@@ -18,23 +18,14 @@ class GamesHubSubApp(BaseSubApp):
         self.icon = QApplication.style().standardIcon(QStyle.SP_ComputerIcon)
         self._panel: QWidget | None = None
 
-    # ------------------------------------------------------------------
-    # BaseSubApp contract
-
     def create_body(self) -> QWidget:
         from app.subapps.games_hub.ui import HubPanel
         self._panel = HubPanel()
         return self._panel
 
     def get_settings(self) -> list[SettingDef]:
-        return [
-            SettingDef(
-                "bomberman.debug_bot_path",
-                "Bomberman: Show bot planned path",
-                "bool",
-                False,
-            ),
-        ]
+        from app.subapps.games_hub.ui import aggregate_settings
+        return aggregate_settings()
 
     def get_commands(self) -> list[CommandDef]:
         return [
@@ -49,8 +40,6 @@ class GamesHubSubApp(BaseSubApp):
     def on_deactivated(self) -> None:
         if self._panel is not None:
             self._panel.stop_active_game()  # type: ignore[attr-defined]
-
-    # ------------------------------------------------------------------
 
     def _open(self) -> None:
         from app.core.registry import registry

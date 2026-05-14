@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QWidget
 from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
 from app.subapps.games_hub.ui import register_game
 
-# Field dimensions (logical units, renderer scales to actual pixels)
 FIELD_W = 800
 FIELD_H = 500
 
@@ -21,17 +20,17 @@ PADDLE_SPEED = 6
 BALL_SIZE = 12
 BALL_SPEED_INIT = 5.0
 BALL_SPEED_MAX = 14.0
-BALL_SPEED_INC = 0.3     # speed added per paddle hit
+BALL_SPEED_INC = 0.3
 
 WIN_SCORE = 7
-TICK_MS = 16             # ~60 fps
+TICK_MS = 16
 
 
 @dataclass
 class PaddleState:
-    y: float              # top-left y (x is fixed per side)
+    y: float
     score: int = 0
-    dy: float = 0.0      # current velocity from input
+    dy: float = 0.0
 
 
 @dataclass
@@ -47,7 +46,7 @@ class PongState:
     left: PaddleState
     right: PaddleState
     ball: BallState
-    serving: bool = True  # pause before each point
+    serving: bool = True
 
     @staticmethod
     def initial() -> "PongState":
@@ -59,7 +58,7 @@ class PongState:
 
 
 def _center_ball(vx_sign: int = 1) -> BallState:
-    angle = random.uniform(-0.4, 0.4)  # radians, not too steep
+    angle = random.uniform(-0.4, 0.4)
     return BallState(
         x=FIELD_W / 2,
         y=FIELD_H / 2,
@@ -68,14 +67,10 @@ def _center_ball(vx_sign: int = 1) -> BallState:
     )
 
 
-@register_game
-class PongGame(BaseGame):
+class _PongBase(BaseGame):
+    """Shared physics and lifecycle for both Pong variants."""
+
     game_id = "pong"
-    display_name = "Pong"
-    icon_char = "🏓"
-    icon_path = ""
-    max_players = 2
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -84,15 +79,10 @@ class PongGame(BaseGame):
         self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._tick)
         self._widget: QWidget | None = None
-        self._mode = GameMode.SINGLE
-        # Held directions per slot
         self._held: dict[PlayerSlot, float] = {PlayerSlot.P1: 0.0, PlayerSlot.P2: 0.0}
         self._serve_timer = QTimer(self)
         self._serve_timer.setSingleShot(True)
         self._serve_timer.timeout.connect(self._launch_ball)
-
-    # ------------------------------------------------------------------
-    # BaseGame contract
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.pong.renderer import PongRenderer
@@ -100,7 +90,6 @@ class PongGame(BaseGame):
         return self._widget
 
     def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
-        self._mode = mode
         self._state = PongState.initial()
         self._held = {PlayerSlot.P1: 0.0, PlayerSlot.P2: 0.0}
         if self._widget is not None:
@@ -140,13 +129,14 @@ class PongGame(BaseGame):
     def get_state(self) -> dict:
         s = self._state
         return {
-            "left": {"y": s.left.y, "score": s.left.score, "dy": s.left.dy},
-            "right": {"y": s.right.y, "score": s.right.score, "dy": s.right.dy},
-            "ball": {"x": s.ball.x, "y": s.ball.y, "vx": s.ball.vx, "vy": s.ball.vy},
+            "left":    {"y": s.left.y,  "score": s.left.score,  "dy": s.left.dy},
+            "right":   {"y": s.right.y, "score": s.right.score, "dy": s.right.dy},
+            "ball":    {"x": s.ball.x,  "y": s.ball.y, "vx": s.ball.vx, "vy": s.ball.vy},
             "serving": s.serving,
         }
 
-    # ------------------------------------------------------------------
+    def _right_dy(self) -> float:
+        raise NotImplementedError
 
     def _begin_serve(self) -> None:
         self._state.serving = True
@@ -161,22 +151,15 @@ class PongGame(BaseGame):
 
     def _tick(self) -> None:
         s = self._state
+        s.left.dy  = self._held[PlayerSlot.P1] * PADDLE_SPEED
+        s.right.dy = self._right_dy()
 
-        # Move paddles
-        s.left.dy = self._held[PlayerSlot.P1] * PADDLE_SPEED
-        if self._mode == GameMode.LOCAL_PVP:
-            s.right.dy = self._held[PlayerSlot.P2] * PADDLE_SPEED
-        else:
-            s.right.dy = self._cpu_dy()
-
-        s.left.y = max(0, min(FIELD_H - PADDLE_H, s.left.y + s.left.dy))
+        s.left.y  = max(0, min(FIELD_H - PADDLE_H, s.left.y  + s.left.dy))
         s.right.y = max(0, min(FIELD_H - PADDLE_H, s.right.y + s.right.dy))
 
-        # Move ball
         s.ball.x += s.ball.vx
         s.ball.y += s.ball.vy
 
-        # Top / bottom wall bounce
         if s.ball.y <= 0:
             s.ball.y = 0
             s.ball.vy = abs(s.ball.vy)
@@ -184,27 +167,20 @@ class PongGame(BaseGame):
             s.ball.y = FIELD_H - BALL_SIZE
             s.ball.vy = -abs(s.ball.vy)
 
-        # Left paddle collision
-        if (
-            s.ball.x <= PADDLE_W
-            and s.left.y <= s.ball.y + BALL_SIZE / 2 <= s.left.y + PADDLE_H
-        ):
+        if (s.ball.x <= PADDLE_W and
+                s.left.y <= s.ball.y + BALL_SIZE / 2 <= s.left.y + PADDLE_H):
             s.ball.x = PADDLE_W
             s.ball.vx = abs(s.ball.vx)
             self._apply_spin(s.ball, s.left.dy)
             self._inc_speed(s.ball)
 
-        # Right paddle collision
-        if (
-            s.ball.x + BALL_SIZE >= FIELD_W - PADDLE_W
-            and s.right.y <= s.ball.y + BALL_SIZE / 2 <= s.right.y + PADDLE_H
-        ):
+        if (s.ball.x + BALL_SIZE >= FIELD_W - PADDLE_W and
+                s.right.y <= s.ball.y + BALL_SIZE / 2 <= s.right.y + PADDLE_H):
             s.ball.x = FIELD_W - PADDLE_W - BALL_SIZE
             s.ball.vx = -abs(s.ball.vx)
             self._apply_spin(s.ball, s.right.dy)
             self._inc_speed(s.ball)
 
-        # Scoring
         if s.ball.x + BALL_SIZE < 0:
             s.right.score += 1
             self._after_score()
@@ -212,7 +188,7 @@ class PongGame(BaseGame):
             s.left.score += 1
             self._after_score()
 
-        self.score_tick.emit({"p1": s.left.score, "p2": s.right.score})
+        self.score_tick.emit(f"{s.left.score} : {s.right.score}")
         self._sync()
 
     def _after_score(self) -> None:
@@ -224,21 +200,9 @@ class PongGame(BaseGame):
         else:
             self._begin_serve()
 
-    def _cpu_dy(self) -> float:
-        ball = self._state.ball
-        paddle = self._state.right
-        centre = paddle.y + PADDLE_H / 2
-        target = ball.y
-        diff = target - centre
-        # Only react when ball is heading right
-        if ball.vx > 0:
-            return max(-PADDLE_SPEED * 0.85, min(PADDLE_SPEED * 0.85, diff * 0.12))
-        return max(-PADDLE_SPEED * 0.4, min(PADDLE_SPEED * 0.4, diff * 0.05))
-
     @staticmethod
     def _apply_spin(ball: BallState, paddle_dy: float) -> None:
         ball.vy += paddle_dy * 0.4
-        # Cap vertical speed
         speed = math.hypot(ball.vx, ball.vy)
         if speed > BALL_SPEED_MAX:
             ball.vx = ball.vx / speed * BALL_SPEED_MAX
@@ -252,6 +216,33 @@ class PongGame(BaseGame):
             ball.vx = ball.vx / speed * new_speed
             ball.vy = ball.vy / speed * new_speed
 
+    def _cpu_dy(self) -> float:
+        ball   = self._state.ball
+        paddle = self._state.right
+        centre = paddle.y + PADDLE_H / 2
+        diff   = ball.y - centre
+        if ball.vx > 0:
+            return max(-PADDLE_SPEED * 0.85, min(PADDLE_SPEED * 0.85, diff * 0.12))
+        return max(-PADDLE_SPEED * 0.4, min(PADDLE_SPEED * 0.4, diff * 0.05))
+
     def _sync(self) -> None:
         if self._widget is not None:
             self._widget.update()  # type: ignore[attr-defined]
+
+
+@register_game
+class PongSingleGame(_PongBase):
+    display_name = "Pong — vs CPU"
+    icon_char    = "🏓"
+
+    def _right_dy(self) -> float:
+        return self._cpu_dy()
+
+
+@register_game
+class PongPvPGame(_PongBase):
+    display_name = "Pong — 2 Players"
+    icon_char    = "🏓"
+
+    def _right_dy(self) -> float:
+        return self._held[PlayerSlot.P2] * PADDLE_SPEED

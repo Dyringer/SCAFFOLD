@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
-    pass
+    from app.core.settings_store import SettingDef
 
 
 class _Meta(type(QObject), ABCMeta):
@@ -42,26 +43,56 @@ class GameState(Enum):
     OVER = "over"
 
 
+@dataclass
+class GameComposite:
+    """Groups related game variants under one hub card.
+
+    The first variant is the default; the dialog lets the user pick others.
+    """
+    display_name: str
+    icon_char:    str
+    variants:     list[type["BaseGame"]]
+    game_id:      str = ""
+
+    def __post_init__(self) -> None:
+        if not self.game_id and self.variants:
+            self.game_id = self.variants[0].game_id
+
+
 class BaseGame(QObject, metaclass=_Meta):
     """Abstract base for all games. Hub calls the lifecycle methods; games emit signals."""
 
-    game_over = Signal(dict)     # {"p1": int, "p2": int | None}
-    score_tick = Signal(dict)    # same shape, live updates
-    state_changed = Signal(str)  # GameState.value
+    game_over    = Signal(dict)   # {"p1": int, ...} — final scores
+    score_tick   = Signal(str)    # pre-formatted score string for the hub bar
+    state_changed = Signal(str)   # GameState.value
 
     # --- class-level metadata; override in each game ---
-    game_id: str = ""
+    game_id:      str = ""
     display_name: str = ""
-    icon_char: str = "🎮"
-    icon_path: str = ""          # relative to app/resources/
-    max_players: int = 1
-    supports_lan: bool = False
+    icon_char:    str = "🎮"
+    icon_path:    str = ""   # relative to app/resources/
 
     def __init__(self) -> None:
         super().__init__()
         self._game_state = GameState.IDLE
         self._mode: GameMode = GameMode.SINGLE
         self._players: dict[PlayerSlot, str] = {}
+
+    # ------------------------------------------------------------------
+    # Hub extension points
+
+    @classmethod
+    def get_settings(cls) -> list["SettingDef"]:
+        """Settings exposed in the Settings panel for this game."""
+        return []
+
+    def toolbar_actions(self) -> list[tuple[str, object]]:
+        """Extra buttons for the in-game top bar: [(label, callable), ...]."""
+        return []
+
+    def can_pause(self) -> bool:
+        """Return False to hide the Pause button (e.g. bot-only games)."""
+        return True
 
     # ------------------------------------------------------------------
     # Lifecycle — called by the hub
@@ -71,7 +102,6 @@ class BaseGame(QObject, metaclass=_Meta):
         """Return the game canvas widget. Called once by the hub."""
 
     def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
-        """Begin a new game session."""
         self._mode = mode
         self._players = players
         self._set_state(GameState.RUNNING)
@@ -100,14 +130,13 @@ class BaseGame(QObject, metaclass=_Meta):
         pass
 
     # ------------------------------------------------------------------
-    # LAN serialisation interface (implement when supports_lan = True)
+    # LAN serialisation interface
 
     def get_state(self) -> dict:
-        """Return full serialisable game state snapshot."""
         return {}
 
     def apply_state(self, state: dict) -> None:
-        """Apply a received state snapshot (LAN client side)."""
+        pass
 
     # ------------------------------------------------------------------
 

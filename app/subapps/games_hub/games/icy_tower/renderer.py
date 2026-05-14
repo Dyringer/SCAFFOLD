@@ -125,11 +125,17 @@ class IcyTowerRenderer(QWidget):
             p.drawRect(spark_x, py_s, wall_w, ph_s)
 
         # Platforms
-        plat_color  = pal.piece(4)
-        sheen_color = QColor(
+        plat_color    = pal.piece(4)   # sky blue — normal
+        crumble_color = pal.piece(1)   # peach — crumble
+        sheen_normal  = QColor(
             min(255, plat_color.red()   + 40),
             min(255, plat_color.green() + 40),
             min(255, plat_color.blue()  + 50),
+        )
+        sheen_crumble = QColor(
+            min(255, crumble_color.red()   + 40),
+            min(255, crumble_color.green() + 30),
+            min(255, crumble_color.blue()  + 20),
         )
         p.setPen(Qt.NoPen)
         for plat in s.platforms:
@@ -139,11 +145,27 @@ class IcyTowerRenderer(QWidget):
             sh = max(3, int(plat.h * scale))
             if sy > oy + bh + sh or sy < oy - sh:
                 continue
-            p.setBrush(plat_color)
+
+            color = crumble_color if plat.crumble else plat_color
+            sheen = sheen_crumble if plat.crumble else sheen_normal
+
+            p.setBrush(color)
             p.drawRoundedRect(sx, sy, sw, sh, _PLAT_R, _PLAT_R)
             sheen_h = max(2, sh // 3)
-            p.setBrush(sheen_color)
+            p.setBrush(sheen)
             p.drawRoundedRect(sx + 2, sy + 1, max(4, sw - 4), sheen_h, _PLAT_R, _PLAT_R)
+
+            # Crack marks on crumble platforms
+            if plat.crumble:
+                crack_pen = QPen(QColor(max(0, crumble_color.red() - 40),
+                                        max(0, crumble_color.green() - 30),
+                                        max(0, crumble_color.blue() - 20)))
+                crack_pen.setWidth(1)
+                p.setPen(crack_pen)
+                mid = sx + sw // 2
+                p.drawLine(mid - sw // 6, sy + 2, mid, sy + sh - 2)
+                p.drawLine(mid, sy + 2, mid + sw // 6, sy + sh - 2)
+                p.setPen(Qt.NoPen)
 
         # Player
         px_s = ox + int(s.px * scale)

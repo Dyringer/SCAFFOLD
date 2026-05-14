@@ -107,8 +107,6 @@ class SpaceInvadersGame(BaseGame):
     game_id = "space_invaders"
     display_name = "Space Invaders"
     icon_char = "👾"
-    max_players = 1
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -261,7 +259,7 @@ class SpaceInvadersGame(BaseGame):
                     s.can_fire = True
                     row_score = (INVADER_ROWS - inv.row) * 10
                     s.score += row_score * s.wave
-                    self.score_tick.emit({"p1": s.score})
+                    self.score_tick.emit(f"Score: {s.score:,}")
                     break
 
         # All invaders dead → next wave

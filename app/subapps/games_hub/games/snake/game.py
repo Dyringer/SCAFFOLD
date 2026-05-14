@@ -55,8 +55,6 @@ class SnakeGame(BaseGame):
     game_id = "snake"
     display_name = "Snake"
     icon_char = "🐍"
-    max_players = 1
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -126,7 +124,7 @@ class SnakeGame(BaseGame):
             # Speed up every 5 apples
             if s.apples_eaten % 5 == 0:
                 self._timer.start(self._current_speed())
-            self.score_tick.emit({"p1": s.score})
+            self.score_tick.emit(f"Score: {s.score:,}")
         else:
             s.body.pop()
 

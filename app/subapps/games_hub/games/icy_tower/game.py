@@ -56,6 +56,8 @@ class Platform:
     w: float
     idx: int = 0
     h: float = PLAT_H
+    crumble: bool = False   # disappears after player leaves it
+    crumble_timer: int = 0  # counts down to removal; >0 means crumbling
 
     @property
     def right(self) -> float:
@@ -104,6 +106,7 @@ class IcyTowerState:
     vy: float
     on_ground: bool
     on_wall: int                    # -1 = left wall, 0 = none, 1 = right wall
+    standing_on: Platform | None    # platform the player stood on last frame
     holding_left: bool
     holding_right: bool
     platforms: list[Platform]
@@ -146,7 +149,7 @@ class IcyTowerState:
 
         return IcyTowerState(
             px=px, py=py, vx=0, vy=0,
-            on_ground=True, on_wall=0,
+            on_ground=True, on_wall=0, standing_on=None,
             holding_left=False, holding_right=False,
             platforms=platforms,
             segments=[seg0, seg1, seg2],
@@ -173,7 +176,8 @@ def _plat_width(floor_idx: int) -> float:
 def _gen_platform(y: float, idx: int) -> Platform:
     w = _plat_width(idx)
     x = random.uniform(0, max(0, WORLD_W - w))
-    return Platform(x=x, y=y, w=w, idx=idx)
+    crumble = idx > 5 and random.random() < 1 / 25
+    return Platform(x=x, y=y, w=w, idx=idx, crumble=crumble)
 
 
 def _scroll_speed_for_floor(floor: int) -> float:
@@ -191,8 +195,6 @@ class IcyTowerGame(BaseGame):
     game_id      = "icy_tower"
     display_name = "Icy Tower"
     icon_char    = "🏔️"
-    max_players  = 1
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -299,9 +301,12 @@ class IcyTowerGame(BaseGame):
                 s.px = -s.PLAYER_W
 
         # Platform collision (landing on top only, while falling)
+        landed_plat: Platform | None = None
         if s.vy >= 0:
             player_bottom = s.py + s.PLAYER_H
             for plat in s.platforms:
+                if plat.crumble_timer > 0:
+                    continue
                 if (s.px + s.PLAYER_W > plat.x and
                         s.px < plat.right and
                         player_bottom >= plat.y and
@@ -309,12 +314,29 @@ class IcyTowerGame(BaseGame):
                     s.py = plat.y - s.PLAYER_H
                     s.vy = 0.0
                     s.on_ground = True
+                    landed_plat = plat
                     if plat.idx > s.floor:
                         s.floor = plat.idx
                         s.score = plat.idx
                         s.scroll_speed = _scroll_speed_for_floor(s.floor)
-                        self.score_tick.emit({"p1": s.score})
+                        self.score_tick.emit(f"Floor: {s.score}")
                     break
+
+        prev = s.standing_on
+        if prev is not None and prev.crumble and landed_plat is not prev:
+            prev.crumble_timer = 12  # ~200 ms visible before removal
+
+        s.standing_on = landed_plat
+
+        next_platforms = []
+        for p in s.platforms:
+            if p.crumble_timer > 0:
+                p.crumble_timer -= 1
+                if p.crumble_timer > 0:
+                    next_platforms.append(p)
+            else:
+                next_platforms.append(p)
+        s.platforms = next_platforms
 
         # Scroll camera upward when player is in the top 40%
         if s.py < s.camera_y + SCREEN_H * 0.35:

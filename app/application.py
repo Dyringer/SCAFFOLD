@@ -48,16 +48,16 @@ def _register_subapps() -> None:
     from app.subapps.secret.core import SecretSubApp
     from app.subapps.settings.core import SettingsSubApp
 
-    # Import game modules so their @register_game decorators fire
+    # Import game packages — each __init__.py registers games/composites
     import app.subapps.games_hub.games.tetris.game         # noqa: F401
-    import app.subapps.games_hub.games.pong.game           # noqa: F401
     import app.subapps.games_hub.games.snake.game          # noqa: F401
     import app.subapps.games_hub.games.breakout.game       # noqa: F401
     import app.subapps.games_hub.games.space_invaders.game # noqa: F401
-    import app.subapps.games_hub.games.asteroids.game      # noqa: F401
-    import app.subapps.games_hub.games.bomberman.game          # noqa: F401
-    import app.subapps.games_hub.games.asteroidsbomber.game    # noqa: F401
-    import app.subapps.games_hub.games.icy_tower.game          # noqa: F401
+    import app.subapps.games_hub.games.icy_tower.game      # noqa: F401
+    import app.subapps.games_hub.games.asteroids           # noqa: F401
+    import app.subapps.games_hub.games.pong                # noqa: F401
+    import app.subapps.games_hub.games.bomberman           # noqa: F401
+    import app.subapps.games_hub.games.asteroidsbomber     # noqa: F401
 
     registry.register(CounterSubApp())
     registry.register(DummySubApp())

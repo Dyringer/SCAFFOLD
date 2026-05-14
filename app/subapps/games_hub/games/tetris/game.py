@@ -116,8 +116,6 @@ class TetrisGame(BaseGame):
     display_name = "Tetris"
     icon_char = "🟦"
     icon_path = ""
-    max_players = 1
-    supports_lan = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -255,7 +253,7 @@ class TetrisGame(BaseGame):
         self._state.next_type = random.randrange(len(_PIECES))
         self._state.piece, self._state.pivot = _spawn(self._state.piece_type)
 
-        self.score_tick.emit({"p1": self._state.score})
+        self.score_tick.emit(f"Score: {self._state.score:,}")
 
         if not _valid(self._state.board, self._state.piece):
             self._timer.stop()
