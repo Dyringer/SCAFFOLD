@@ -5,9 +5,9 @@ import math
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.games.asteroids.game_core import (
-    AsteroidsState, GameOverEvent, HitEvent, TICK_MS, MAX_BULLETS, FIRE_COOLDOWN_TICKS,
+    AsteroidsState, GameOverEvent, HitEvent, InputState, TICK_MS, MAX_BULLETS,
 )
 from app.subapps.games_hub.games.asteroids.nn_brain import GeneticTrainer
 from app.subapps.games_hub.games.asteroids.nn_bot import AsteroidsBot
@@ -148,6 +148,7 @@ class AsteroidsBotGame(BaseGame):
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
 
     # ------------------------------------------------------------------
     # BaseGame interface
@@ -159,7 +160,7 @@ class AsteroidsBotGame(BaseGame):
 
         self._widget = AsteroidsRenderer(self._state)
 
-        if not settings_store.get("asteroids.show_nn_visualizer", True):
+        if not settings_store.get("asteroids.show_nn_visualizer", False):
             return self._widget
 
         from app.subapps.games_hub.games.asteroids.nn_visualizer import NNVisualizerWidget
@@ -174,7 +175,7 @@ class AsteroidsBotGame(BaseGame):
         layout.addWidget(self._viz)
         return container
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         viz_cb = self._bot.viz_callback
         self._bot = BotRunner()
         self._bot.viz_callback = viz_cb
@@ -182,10 +183,6 @@ class AsteroidsBotGame(BaseGame):
         self._set_state(GameState.RUNNING)
         self._push_stats()
         self._timer.start()
-
-    def stop(self) -> None:
-        self._timer.stop()
-        super().stop()
 
     # Bot games don't pause — evolution runs continuously
     def pause(self) -> None:
@@ -195,11 +192,6 @@ class AsteroidsBotGame(BaseGame):
         pass
 
     # No keyboard input — ship is driven entirely by the neural net
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        pass
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        pass
 
     def get_state(self) -> dict:
         s = self._state
@@ -207,6 +199,13 @@ class AsteroidsBotGame(BaseGame):
 
     # ------------------------------------------------------------------
     # BaseGame extension points
+
+    @classmethod
+    def get_settings(cls) -> list:
+        from app.core.settings_store import SettingDef
+        return [
+            SettingDef("asteroids.show_nn_visualizer", "Show NN visualizer", "bool", False),
+        ]
 
     def can_pause(self) -> bool:
         return False
@@ -241,12 +240,12 @@ class AsteroidsBotGame(BaseGame):
         self._fire_cooldown = 0
         self._bot.reset(self._state)
         if self._widget is not None:
-            self._widget._state    = self._state   # type: ignore[attr-defined]
-            self._widget._bot_stats = {}            # type: ignore[attr-defined]
+            self._widget.state      = self._state
+            self._widget.bot_stats  = {}
 
     def _push_stats(self) -> None:
         if self._widget is not None:
-            self._widget._bot_stats = self._bot.get_stats()  # type: ignore[attr-defined]
+            self._widget.bot_stats = self._bot.get_stats()
 
     def _tick(self) -> None:
         from app.subapps.games_hub.games.asteroids.game_core import step
@@ -260,9 +259,8 @@ class AsteroidsBotGame(BaseGame):
         if will_fire:
             bot.record_shot_fired()
 
-        self._fire_cooldown, events = step(
-            s, rot_l, rot_r, thrust, self._fire_cooldown, fire,
-        )
+        inp = InputState(left=rot_l, right=rot_r, thrust=thrust, fire=fire)
+        self._fire_cooldown, events = step(s, inp, self._fire_cooldown)
 
         for evt in events:
             if isinstance(evt, HitEvent):

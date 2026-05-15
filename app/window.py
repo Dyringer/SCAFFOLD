@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QPoint, QRect, QKeyCombination
+from PySide6.QtCore import Qt, QPoint, QRect, QKeyCombination, QEvent
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QMainWindow, QSplitter,
@@ -34,8 +34,6 @@ class MainWindow(QWidget):
         self.setMinimumSize(_MIN_W, _MIN_H)
         self.resize(_DEFAULT_W, _DEFAULT_H)
 
-        self._drag_pos: QPoint | None = None
-
         self._build_ui()
         self._wire_signals()
         self._restore_geometry()
@@ -64,6 +62,7 @@ class MainWindow(QWidget):
         # header
         self._header = HeaderBar(self)
         root.addWidget(self._header)
+        self._install_drag_filter(self._header)
 
         # upper area: sidebar + body side-by-side
         upper = QWidget()
@@ -138,23 +137,24 @@ class MainWindow(QWidget):
     # ------------------------------------------------------------------
     # frameless window drag
 
+    def _install_drag_filter(self, widget: QWidget) -> None:
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def _in_header(self, global_pos: QPoint) -> bool:
+        return self._header.rect().contains(self._header.mapFromGlobal(global_pos))
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            if obj is self._header and self._in_header(event.globalPosition().toPoint()):
+                self.windowHandle().startSystemMove()
+        return super().eventFilter(obj, event)
+
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.LeftButton:
-            # only drag from header area
-            if self._header.rect().contains(
-                self._header.mapFromGlobal(event.globalPosition().toPoint())
-            ):
-                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        if event.button() == Qt.LeftButton and self._in_header(event.globalPosition().toPoint()):
+            self.windowHandle().startSystemMove()
         super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
 
     # ------------------------------------------------------------------
     # geometry persistence

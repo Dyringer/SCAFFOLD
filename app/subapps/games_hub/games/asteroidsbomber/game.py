@@ -8,7 +8,7 @@ from typing import Callable
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 FIELD_W = 700
@@ -36,6 +36,14 @@ TICK_MS = 16
 
 
 @dataclass
+class _Input:
+    left:   bool = False
+    right:  bool = False
+    thrust: bool = False
+    bomb:   bool = False
+
+
+@dataclass
 class Ship:
     x: float
     y: float
@@ -48,9 +56,6 @@ class Ship:
     bombs_live: int = 0
     bomb_cooldown: int = 0
     score: int = 0
-    held_left: bool = False
-    held_right: bool = False
-    held_thrust: bool = False
 
 
 @dataclass
@@ -140,69 +145,45 @@ class _ABBase(BaseGame):
 
     def __init__(self, pvp: bool) -> None:
         super().__init__()
-        self._pvp   = pvp
-        self._state = ABState.new(1)
-        self._timer = QTimer(self)
+        self._pvp    = pvp
+        self._state  = ABState.new(1)
+        self._inputs: list[_Input] = [_Input(), _Input()]
+        self._bomb_held: list[bool] = [False, False]
+        self._timer  = QTimer(self)
         self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
         self._widget: QWidget | None = None
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.asteroidsbomber.renderer import ABRenderer
-        self._widget = ABRenderer(self._state)
-        self._widget._pvp = self._pvp  # type: ignore[attr-defined]
+        self._widget = ABRenderer(self._state, self._inputs, pvp=self._pvp)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = ABState.new(1)
+        for inp in self._inputs:
+            inp.left = inp.right = inp.thrust = inp.bomb = False
+        self._bomb_held = [False, False]
         if self._widget is not None:
-            self._widget._state = self._state  # type: ignore[attr-defined]
-            self._widget._pvp   = self._pvp    # type: ignore[attr-defined]
+            self._widget.state = self._state
+            self._widget.clear_held()
         super().start(mode, players)
         self._timer.start()
-
-    def pause(self) -> None:
-        self._timer.stop()
-        super().pause()
-
-    def resume(self) -> None:
-        super().resume()
-        self._timer.start()
-
-    def stop(self) -> None:
-        self._timer.stop()
-        super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        idx = 0 if slot == PlayerSlot.P1 else 1
-        if idx >= len(self._state.ships):
-            return
-        ship = self._state.ships[idx]
-        if action == Action.LEFT:    ship.held_left   = True
-        elif action == Action.RIGHT: ship.held_right  = True
-        elif action == Action.UP:    ship.held_thrust = True
-        elif action == Action.DOWN:  self._try_bomb(idx)
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        idx = 0 if slot == PlayerSlot.P1 else 1
-        if idx >= len(self._state.ships):
-            return
-        ship = self._state.ships[idx]
-        if action == Action.LEFT:    ship.held_left   = False
-        elif action == Action.RIGHT: ship.held_right  = False
-        elif action == Action.UP:    ship.held_thrust = False
 
     def _tick(self) -> None:
         s = self._state
         s.tick += 1
 
-        for ship in s.ships:
+        for i, ship in enumerate(s.ships):
             if ship.alive:
-                _move_ship(ship)
+                inp = self._inputs[i] if i < len(self._inputs) else _Input()
+                _move_ship(ship, inp)
 
         self._drive_non_player_ships()
+
+        # Rising-edge bomb for human-controlled ships
+        self._handle_bombs()
 
         for b in s.bombs:
             b.x = (b.x + b.vx) % FIELD_W
@@ -237,6 +218,16 @@ class _ABBase(BaseGame):
 
         if self._widget is not None:
             self._widget.update()
+
+    def _handle_bombs(self) -> None:
+        """Rising-edge bomb drop for P1 (and P2 in PvP)."""
+        player_count = 2 if self._pvp else 1
+        for i in range(player_count):
+            inp = self._inputs[i]
+            pressed = inp.bomb and not self._bomb_held[i]
+            self._bomb_held[i] = inp.bomb
+            if pressed:
+                self._try_bomb(i)
 
     def _drive_non_player_ships(self) -> None:
         raise NotImplementedError
@@ -287,10 +278,8 @@ class _ABBase(BaseGame):
         self._timer.stop()
         self._set_state(GameState.OVER)
         winner = alive[0] if len(alive) == 1 else None
-        scores: dict = {}
-        for i in range(len(s.ships)):
-            scores[f"p{i + 1}"] = 1 if i == winner else 0
-        self.game_over.emit(scores)
+        scores = {i: sh.score for i, sh in enumerate(s.ships)}
+        self.game_over.emit(GameResult(scores=scores, winner=winner))
 
     def _try_bomb(self, ship_idx: int) -> None:
         s = self._state
@@ -326,7 +315,7 @@ class AsteroidsBomberSingleGame(_ABBase):
         s = self._state
         for i in range(1, len(s.ships)):
             if s.ships[i].alive:
-                bot_act(s, i, lambda idx=i: self._try_bomb(idx))
+                bot_act(s, i, self._inputs[i], lambda idx=i: self._try_bomb(idx))
 
 
 @register_game
@@ -337,22 +326,22 @@ class AsteroidsBomberPvPGame(_ABBase):
         super().__init__(pvp=True)
 
     def _drive_non_player_ships(self) -> None:
-        pass  # both ships are human-controlled via key_press/key_release
+        pass
 
 
-def _move_ship(ship: Ship) -> None:
+def _move_ship(ship: Ship, inp: _Input) -> None:
     if ship.invincible > 0:
         ship.invincible -= 1
     if ship.bomb_cooldown > 0:
         ship.bomb_cooldown -= 1
 
-    if ship.held_left:
+    if inp.left:
         ship.angle -= SHIP_ROT_SPEED
-    if ship.held_right:
+    if inp.right:
         ship.angle += SHIP_ROT_SPEED
 
-    ship.thrusting = ship.held_thrust
-    if ship.held_thrust:
+    ship.thrusting = inp.thrust
+    if inp.thrust:
         rad = math.radians(ship.angle)
         ship.vx += math.sin(rad) * SHIP_ACCEL
         ship.vy -= math.cos(rad) * SHIP_ACCEL

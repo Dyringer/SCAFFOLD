@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 COLS = 20
@@ -61,40 +61,30 @@ class SnakeGame(BaseGame):
         self._state = SnakeState.new()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
         self._widget: QWidget | None = None
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.snake.renderer import SnakeRenderer
-        self._widget = SnakeRenderer(self._state)
+        self._widget = SnakeRenderer(self._state, self._on_direction)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = SnakeState.new()
         if self._widget is not None:
-            self._widget._state = self._state  # type: ignore[attr-defined]
+            self._widget.state = self._state
         super().start(mode, players)
         self._timer.start(TICK_MS)
-
-    def pause(self) -> None:
-        self._timer.stop()
-        super().pause()
 
     def resume(self) -> None:
         super().resume()
         self._timer.start(self._current_speed())
 
-    def stop(self) -> None:
-        self._timer.stop()
-        super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        d = self._state.direction
-        if action == Action.UP    and d != (1, 0):  self._state.next_dir = (-1, 0)
-        elif action == Action.DOWN  and d != (-1, 0): self._state.next_dir = (1, 0)
-        elif action == Action.LEFT  and d != (0, 1):  self._state.next_dir = (0, -1)
-        elif action == Action.RIGHT and d != (0, -1): self._state.next_dir = (0, 1)
+    def _on_direction(self, dr: int, dc: int) -> None:
+        s = self._state
+        # Ignore if opposite direction
+        if (dr, dc) != (-s.direction[0], -s.direction[1]):
+            s.next_dir = (dr, dc)
 
     def get_state(self) -> dict:
         s = self._state
@@ -134,7 +124,7 @@ class SnakeGame(BaseGame):
     def _die(self) -> None:
         self._timer.stop()
         self._set_state(GameState.OVER)
-        self.game_over.emit({"p1": self._state.score})
+        self.game_over.emit(GameResult(scores={0: self._state.score}, winner=None))
 
     def _current_speed(self) -> int:
         reduction = (self._state.apples_eaten // 5) * SPEED_STEP

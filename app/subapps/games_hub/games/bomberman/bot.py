@@ -4,11 +4,10 @@ import heapq
 from collections import deque
 from typing import Callable
 
-from app.subapps.games_hub.base_game import PlayerSlot
-from app.subapps.games_hub.games.bomberman.game import (
+from app.subapps.games_hub.games.bomberman.game_core import (
     Bomb, BombermanState, Cell, Player,
     ROWS, COLS, FUSE_TICKS, MOVE_DELAY,
-    _blast_cells,
+    P1, P2, blast_cells as _blast_cells,
 )
 
 _INF: int = 10_000
@@ -171,8 +170,8 @@ def bot_path(state: BombermanState) -> tuple[list[tuple[int, int]], int]:
     path       – full cell list from bot to P1, or [] if unreachable.
     total_cost – weighted Dijkstra cost (empty steps + crate penalties).
     """
-    bot = state.players[PlayerSlot.P2]
-    p1  = state.players[PlayerSlot.P1]
+    bot = state.players[P2]
+    p1  = state.players[P1]
     if not bot.alive or not p1.alive:
         return [], 0
 
@@ -340,7 +339,7 @@ def _try_bomb_and_flee(
     """
     if bot.bombs_placed >= bot.max_bombs:
         return False
-    sim_bomb = Bomb(row=bot.row, col=bot.col, owner=PlayerSlot.P2, fuse=FUSE_TICKS)
+    sim_bomb = Bomb(row=bot.row, col=bot.col, owner=P2, fuse=FUSE_TICKS)
     sim_blast, _ = _danger_cells(state.grid, state.bombs + [sim_bomb], state.explosions)
     escape = _find_escape(
         state.grid, state.bombs + [sim_bomb],
@@ -362,10 +361,10 @@ def bot_act(
     state: BombermanState,
     place_bomb: Callable[[], None],
 ) -> None:
-    """Execute one bot decision tick for PlayerSlot.P2."""
-    bot = state.players[PlayerSlot.P2]
-    p1  = state.players[PlayerSlot.P1]
-    if not bot.alive:
+    """Execute one bot decision tick for P2."""
+    bot = state.players[P2]
+    p1  = state.players[P1]
+    if not bot.alive or bot.move_cd > 0:
         return
 
     blast_zone, explosion_zone = _danger_cells(

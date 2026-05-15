@@ -35,7 +35,11 @@ class ScoreStore:
         if self._path.exists():
             try:
                 self._data = json.loads(self._path.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Score file corrupted, resetting: %s", exc
+                )
                 self._data = {}
 
     def _save(self) -> None:

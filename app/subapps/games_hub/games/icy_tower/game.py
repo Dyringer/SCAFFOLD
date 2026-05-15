@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 # -----------------------------------------------------------------------
@@ -45,6 +45,13 @@ _SPEED_BRACKETS = [
     (80,  1.9),
     (120, 2.6),
 ]
+
+
+@dataclass
+class _Input:
+    left:  bool = False
+    right: bool = False
+    jump:  bool = False
 
 
 # -----------------------------------------------------------------------
@@ -107,8 +114,6 @@ class IcyTowerState:
     on_ground: bool
     on_wall: int                    # -1 = left wall, 0 = none, 1 = right wall
     standing_on: Platform | None    # platform the player stood on last frame
-    holding_left: bool
-    holding_right: bool
     platforms: list[Platform]
     segments: list[Segment]
     camera_y: float                 # world y at top of screen
@@ -150,7 +155,6 @@ class IcyTowerState:
         return IcyTowerState(
             px=px, py=py, vx=0, vy=0,
             on_ground=True, on_wall=0, standing_on=None,
-            holding_left=False, holding_right=False,
             platforms=platforms,
             segments=[seg0, seg1, seg2],
             camera_y=py - SCREEN_H * 0.35,
@@ -199,69 +203,53 @@ class IcyTowerGame(BaseGame):
     def __init__(self) -> None:
         super().__init__()
         self._state = IcyTowerState.new()
+        self._input = _Input()
+        self._jump_held = False
         self._timer = QTimer(self)
+        self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
         self._widget: QWidget | None = None
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.icy_tower.renderer import IcyTowerRenderer
-        self._widget = IcyTowerRenderer(self._state)
+        self._widget = IcyTowerRenderer(self._state, self._input)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = IcyTowerState.new()
+        self._input.left = self._input.right = self._input.jump = False
+        self._jump_held = False
         if self._widget is not None:
-            self._widget._state = self._state  # type: ignore[attr-defined]
+            self._widget.state = self._state
+            self._widget.clear_held()
         super().start(mode, players)
-        self._timer.start(TICK_MS)
-
-    def pause(self) -> None:
-        self._timer.stop()
-        super().pause()
-
-    def resume(self) -> None:
-        super().resume()
-        self._timer.start(TICK_MS)
-
-    def stop(self) -> None:
-        self._timer.stop()
-        super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        s = self._state
-        if action == Action.LEFT:
-            s.holding_left = True
-        elif action == Action.RIGHT:
-            s.holding_right = True
-        elif action == Action.FIRE:
-            if s.on_ground:
-                running = abs(s.vx) >= RUN_THRESHOLD
-                s.vy = JUMP_VY + (RUN_JUMP_BONUS if running else 0.0)
-                s.on_ground = False
-            elif s.on_wall != 0:
-                s.vy = JUMP_VY
-                s.vx = -s.on_wall * WALK_VX * 1.4
-                s.on_wall = 0
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        s = self._state
-        if action == Action.LEFT:
-            s.holding_left = False
-        elif action == Action.RIGHT:
-            s.holding_right = False
+        self._timer.start()
 
     # ------------------------------------------------------------------
 
     def _tick(self) -> None:
         s = self._state
+        inp = self._input
         walled = s.walled_at(s.py)
 
+        # Rising-edge jump
+        jump_pressed = inp.jump and not self._jump_held
+        self._jump_held = inp.jump
+        if jump_pressed:
+            if s.on_ground:
+                run_bonus = RUN_JUMP_BONUS if abs(s.vx) > RUN_THRESHOLD else 0.0
+                s.vy = JUMP_VY + run_bonus
+                s.on_ground = False
+            elif s.on_wall != 0:
+                s.vy = JUMP_VY * 0.9
+                s.vx = -s.on_wall * WALK_VX * 1.2
+                s.on_wall = 0
+
         # Horizontal movement
-        if s.holding_left:
+        if inp.left:
             s.vx -= 0.5
-        elif s.holding_right:
+        elif inp.right:
             s.vx += 0.5
         else:
             s.vx *= FRICTION
@@ -285,12 +273,12 @@ class IcyTowerGame(BaseGame):
         if walled:
             if s.px <= 0:
                 s.px = 0
-                if s.vy > 0 and s.holding_left:
+                if s.vy > 0 and inp.left:
                     s.on_wall = -1
                 s.vx = 0.0
             elif s.px + s.PLAYER_W >= WORLD_W:
                 s.px = WORLD_W - s.PLAYER_W
-                if s.vy > 0 and s.holding_right:
+                if s.vy > 0 and inp.right:
                     s.on_wall = 1
                 s.vx = 0.0
         else:
@@ -368,6 +356,5 @@ class IcyTowerGame(BaseGame):
             self._widget.update()
 
     def _die(self) -> None:
-        self._timer.stop()
         self._set_state(GameState.OVER)
-        self.game_over.emit({"p1": self._state.score})
+        self.game_over.emit(GameResult(scores={0: self._state.score}, winner=None))

@@ -18,14 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.subapps.games_hub.base_game import BaseGame, GameComposite, GameMode, PlayerSlot
-from app.subapps.games_hub.input_router import input_router
+from app.subapps.games_hub.base_game import BaseGame, GameComposite, GameMode, GameResult
 from app.subapps.games_hub.score_store import score_store
 
 if TYPE_CHECKING:
     from app.core.settings_store import SettingDef
 
-# Registry populated by @register_game / register_composite().
 _GAME_REGISTRY: list[type[BaseGame] | GameComposite] = []
 
 
@@ -39,7 +37,6 @@ def register_composite(composite: GameComposite) -> None:
 
 
 def aggregate_settings() -> list["SettingDef"]:
-    """Collect settings from every registered game/composite — called by core.py."""
     seen: set[str] = set()
     result = []
     for entry in _GAME_REGISTRY:
@@ -56,11 +53,6 @@ def aggregate_settings() -> list["SettingDef"]:
 # Mode selector dialog
 
 class _ModeSelectorDialog(QDialog):
-    """
-    For a GameComposite: one radio per variant.
-    For a plain BaseGame (single-mode game): a single radio is shown.
-    """
-
     def __init__(
         self,
         entry: "type[BaseGame] | GameComposite",
@@ -71,7 +63,7 @@ class _ModeSelectorDialog(QDialog):
         self.setMinimumWidth(280)
         self._drag_pos = None
 
-        self.selected_cls: type[BaseGame] = (
+        self.selected_cls:  type[BaseGame] = (
             entry.variants[0] if isinstance(entry, GameComposite) else entry
         )
         self.selected_mode: GameMode = GameMode.SINGLE
@@ -110,7 +102,6 @@ class _ModeSelectorDialog(QDialog):
         body_layout.setSpacing(10)
 
         self._radios: list[tuple[QRadioButton, type[BaseGame], GameMode]] = []
-
         variants = entry.variants if isinstance(entry, GameComposite) else [entry]
         for i, variant_cls in enumerate(variants):
             btn = QRadioButton(variant_cls.display_name)
@@ -152,7 +143,7 @@ class _GameCard(QFrame):
     def __init__(
         self,
         entry: "type[BaseGame] | GameComposite",
-        hub: "HubPanel",
+        hub:   "HubPanel",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -179,7 +170,6 @@ class _GameCard(QFrame):
         name_lbl.setStyleSheet("font-weight: 700; font-size: 13px;")
         layout.addWidget(name_lbl)
 
-        # Modes badge — number of variants for composites, "1 mode" for plain games
         n_modes = len(entry.variants) if self._is_composite else 1
         badge = QLabel(f"{n_modes} mode{'s' if n_modes != 1 else ''}")
         badge.setAlignment(Qt.AlignCenter)
@@ -207,20 +197,19 @@ class _GameCard(QFrame):
             self._launch()
 
     def _launch(self) -> None:
-        entry        = self._entry
         needs_dialog = self._is_composite
 
         if needs_dialog:
-            dlg = _ModeSelectorDialog(entry, self)
+            dlg = _ModeSelectorDialog(self._entry, self)
             if dlg.exec() != QDialog.Accepted:
                 return
             game_cls = dlg.selected_cls
             mode     = dlg.selected_mode
         else:
-            game_cls = entry  # type: ignore[assignment]
+            game_cls = self._entry  # type: ignore[assignment]
             mode     = GameMode.SINGLE
 
-        self._hub.launch_game(game_cls, mode, {PlayerSlot.P1: "P1"})
+        self._hub.launch_game(game_cls, mode, {0: "P1"})
 
 
 # ---------------------------------------------------------------------------
@@ -271,13 +260,11 @@ class _GameContainer(QWidget):
         for label, callback in game.toolbar_actions():
             btn = QPushButton(label)
             btn.setFixedWidth(max(52, len(label) * 8))
-            btn.clicked.connect(lambda cb=callback: cb())
+            btn.clicked.connect(lambda _checked=False, cb=callback: cb())
             bar_layout.addWidget(btn)
 
         layout.addWidget(bar)
 
-        # Game canvas — game.create_widget() may return a container that already
-        # includes extra panels (e.g. the NN visualiser in bot mode).
         self._canvas_wrap = QWidget()
         wrap_layout = QVBoxLayout(self._canvas_wrap)
         wrap_layout.setContentsMargins(0, 0, 0, 0)
@@ -285,43 +272,52 @@ class _GameContainer(QWidget):
         canvas.setFocusPolicy(Qt.StrongFocus)
         wrap_layout.addWidget(canvas)
         layout.addWidget(self._canvas_wrap, stretch=1)
+        self._canvas = canvas
 
         game.score_tick.connect(self._score_lbl.setText)
         game.game_over.connect(self._on_game_over)
 
-        self.setFocus()
+        canvas.setFocus()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        if not input_router.handle_key_press(Qt.Key(event.key())):
+        key = event.key()
+        if key in (Qt.Key_Escape, Qt.Key_P):
+            self._on_pause()
+        else:
             super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event) -> None:  # noqa: N802
-        if not input_router.handle_key_release(Qt.Key(event.key())):
-            super().keyReleaseEvent(event)
 
     def _on_back(self) -> None:
         self._hub.stop_active_game()
 
     def _on_pause(self) -> None:
-        if self._pause_btn is None:
+        if not self._game.can_pause():
             return
         if self._game.current_state.value == "running":
             self._game.pause()
-            self._pause_btn.setText("Resume")
+            if self._pause_btn:
+                self._pause_btn.setText("Resume")
         else:
             self._game.resume()
-            self._pause_btn.setText("Pause")
+            if self._pause_btn:
+                self._pause_btn.setText("Pause")
 
-    def _on_game_over(self, scores: dict) -> None:
+    def _on_game_over(self, result: GameResult) -> None:
         from app.subapps.games_hub.game_over_overlay import GameOverOverlay
-        self._hub.submit_scores(self._game, scores)
+        self._submit_scores(result)
         best = score_store.best(self._game.game_id)
-        overlay = GameOverOverlay(self._game.display_name, scores, best, self._canvas_wrap)
+        overlay = GameOverOverlay(self._game.display_name, result, best, self._canvas_wrap)
         overlay.hub_clicked.connect(self._hub.stop_active_game)
         overlay.retry_clicked.connect(self._on_retry)
         overlay.show()
         overlay.raise_()
         self._overlay = overlay
+
+    def _submit_scores(self, result: GameResult) -> None:
+        if not result.scores:
+            return
+        for player_idx, score in result.scores.items():
+            name = self._game._players.get(player_idx, f"P{player_idx + 1}")
+            score_store.submit(self._game.game_id, name, score)
 
     def _on_retry(self) -> None:
         if self._overlay is not None:
@@ -331,7 +327,7 @@ class _GameContainer(QWidget):
             self._pause_btn.setText("Pause")
         self._score_lbl.setText("")
         self._game.start(self._game._mode, self._game._players)
-        self.setFocus()
+        self._canvas.setFocus()
 
 
 # ---------------------------------------------------------------------------
@@ -418,38 +414,26 @@ class HubPanel(QWidget):
     def launch_game(
         self,
         game_cls: type[BaseGame],
-        mode: GameMode,
-        players: dict[PlayerSlot, str],
+        mode:     GameMode,
+        players:  dict[int, str],
     ) -> None:
         self.stop_active_game()
         game = game_cls()
         self._active_game = game
-        input_router.attach(game)
         container = _GameContainer(game, hub=self)
         self._game_page_index = self._stack.addWidget(container)
         self._stack.setCurrentIndex(self._game_page_index)
         game.start(mode, players)
-        container.setFocus()
+        container._canvas.setFocus()
 
     def stop_active_game(self) -> None:
         if self._active_game is None:
             return
         self._active_game.stop()
-        input_router.detach()
         self._remove_game_page()
         self._active_game = None
         self._stack.setCurrentIndex(0)
         self.refresh()
-
-    def submit_scores(self, game: BaseGame, scores: dict) -> None:
-        if set(scores.values()) <= {0, 1}:
-            return
-        p1_name = game._players.get(PlayerSlot.P1, "P1")
-        p2_name = game._players.get(PlayerSlot.P2, "P2")
-        if scores.get("p1") is not None:
-            score_store.submit(game.game_id, p1_name, scores["p1"])
-        if scores.get("p2") is not None:
-            score_store.submit(game.game_id, p2_name, scores["p2"])
 
     def _remove_game_page(self) -> None:
         if self._game_page_index < 0:

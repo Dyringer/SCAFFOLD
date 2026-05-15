@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
+
+if TYPE_CHECKING:
+    from app.subapps.games_hub.ui import HubPanel
 
 from app.core.base_subapp import BaseSubApp, CommandDef, SubAppState
 from app.core.settings_store import SettingDef
@@ -16,7 +23,7 @@ class GamesHubSubApp(BaseSubApp):
     def __init__(self) -> None:
         super().__init__()
         self.icon = QApplication.style().standardIcon(QStyle.SP_ComputerIcon)
-        self._panel: QWidget | None = None
+        self._panel: "HubPanel | None" = None
 
     def create_body(self) -> QWidget:
         from app.subapps.games_hub.ui import HubPanel
@@ -39,7 +46,7 @@ class GamesHubSubApp(BaseSubApp):
 
     def on_deactivated(self) -> None:
         if self._panel is not None:
-            self._panel.stop_active_game()  # type: ignore[attr-defined]
+            self._panel.stop_active_game()
 
     def _open(self) -> None:
         from app.core.registry import registry
@@ -48,4 +55,4 @@ class GamesHubSubApp(BaseSubApp):
     def _reset_scores(self) -> None:
         score_store.reset_all()
         if self._panel is not None:
-            self._panel.refresh()  # type: ignore[attr-defined]
+            self._panel.refresh()

@@ -8,11 +8,11 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from app.subapps.games_hub.games.asteroidsbomber.game import (
     ASTEROID_SIZES, BOMB_BLAST_R, BOMB_FUSE_TICKS,
-    FIELD_H, FIELD_W, ABState,
+    FIELD_H, FIELD_W, ABState, _Input,
 )
+from app.subapps.games_hub.input import KeyHandler
 from app.subapps.games_hub.palette import GamePalette
 
-# Ship polygon — same shape as Asteroids
 _SHIP_POINTS = [
     QPointF(0,   -14),
     QPointF(-8,    8),
@@ -25,8 +25,11 @@ _THRUSTER_POINTS = [
     QPointF(4,   4),
 ]
 
-# Per-ship palette indices (player=3 mint, bots cycle through others)
 _SHIP_COLORS = [3, 0, 4, 5, 6]
+
+# P1: WASD + S-bomb;  P2: arrows + ↓-bomb
+_P1_KEYS = {Qt.Key_A, Qt.Key_D, Qt.Key_W, Qt.Key_S}
+_P2_KEYS = {Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down}
 
 
 def _rotated(points: list[QPointF], angle_deg: float) -> QPolygonF:
@@ -50,15 +53,39 @@ def _asteroid_shape(r: int, seed: float) -> list[QPointF]:
     return pts
 
 
-class ABRenderer(QWidget):
-    def __init__(self, state: ABState, parent: QWidget | None = None) -> None:
+class ABRenderer(KeyHandler, QWidget):
+    _TRACKED = _P1_KEYS | _P2_KEYS
+
+    def __init__(
+        self,
+        state:  ABState,
+        inputs: list[_Input],
+        pvp:    bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._state  = state
+        self._key_handler_init()
+        self.state   = state
+        self._inputs = inputs
+        self._pvp    = pvp
         self._tick   = 0
-        self._pvp    = False   # set by game after start() to switch labels
         self.setMinimumSize(420, 350)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setFocusPolicy(Qt.StrongFocus)
+
+    def _sync_input(self) -> None:
+        p1 = self._inputs[0]
+        p1.left   = Qt.Key_A in self._held
+        p1.right  = Qt.Key_D in self._held
+        p1.thrust = Qt.Key_W in self._held
+        p1.bomb   = Qt.Key_S in self._held
+
+        if self._pvp and len(self._inputs) > 1:
+            p2 = self._inputs[1]
+            p2.left   = Qt.Key_Left  in self._held
+            p2.right  = Qt.Key_Right in self._held
+            p2.thrust = Qt.Key_Up    in self._held
+            p2.bomb   = Qt.Key_Down  in self._held
 
     def _ship_label(self, i: int) -> str:
         if i == 0:
@@ -79,7 +106,7 @@ class ABRenderer(QWidget):
 
         p.fillRect(0, 0, sw, sh, pal.board_bg)
 
-        s = self._state
+        s = self.state
 
         p.save()
         p.scale(sx, sy)
@@ -112,16 +139,11 @@ class ABRenderer(QWidget):
         # ── Bombs ─────────────────────────────────────────────────────────
         for b in s.bombs:
             fuse_frac = b.fuse / BOMB_FUSE_TICKS
-            # Pulsing size: shrinks as fuse burns down
             r = 4 + 3 * fuse_frac
-            # Color shifts red as fuse nears zero
-            red   = int(255)
-            green = int(160 * fuse_frac)
-            bomb_c = QColor(red, green, 0)
+            bomb_c = QColor(255, int(160 * fuse_frac), 0)
             p.setPen(Qt.NoPen)
             p.setBrush(bomb_c)
             p.drawEllipse(QPointF(b.x, b.y), r, r)
-            # Fuse arc outline
             ship_c = pal.piece(_SHIP_COLORS[min(b.owner, len(_SHIP_COLORS) - 1)])
             pen = QPen(ship_c)
             pen.setWidthF(1.5 / sx)
@@ -139,7 +161,7 @@ class ABRenderer(QWidget):
             if not ship.alive:
                 continue
             if ship.invincible > 0 and (self._tick // 4) % 2 != 0:
-                continue  # blink
+                continue
             color_idx = _SHIP_COLORS[min(i, len(_SHIP_COLORS) - 1)]
             ship_c = pal.piece(color_idx)
 
@@ -179,6 +201,5 @@ class ABRenderer(QWidget):
         else:
             p.drawText(6, 34, "A/D rotate   W thrust   S bomb")
 
-        # Wind indicator
         wind_angle = math.degrees(math.atan2(s.wind_vx, -s.wind_vy)) % 360
         p.drawText(sw - 120, 18, f"Wind: {wind_angle:.0f}°")

@@ -5,25 +5,43 @@ from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from app.subapps.games_hub.games.icy_tower.game import (
-    IcyTowerState,
-    WORLD_W,
-    SCREEN_H,
-    _SPEED_BRACKETS,
+    IcyTowerState, _Input,
+    WORLD_W, SCREEN_H, _SPEED_BRACKETS,
 )
+from app.subapps.games_hub.input import KeyHandler
 from app.subapps.games_hub.palette import GamePalette
 
 _SIDE_W    = 120
 _PLAT_R    = 4
 _PLAYER_R  = 5
 
+_JUMP_KEYS = {Qt.Key_Space, Qt.Key_Up, Qt.Key_W}
 
-class IcyTowerRenderer(QWidget):
-    def __init__(self, state: IcyTowerState, parent: QWidget | None = None) -> None:
+
+class IcyTowerRenderer(KeyHandler, QWidget):
+    _TRACKED = {Qt.Key_Left, Qt.Key_Right, Qt.Key_A, Qt.Key_D,
+                Qt.Key_Space, Qt.Key_Up, Qt.Key_W}
+
+    def __init__(
+        self,
+        state:       IcyTowerState,
+        input_state: _Input | None = None,
+        parent:      QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._state = state
+        self._key_handler_init()
+        self.state  = state
+        self._input = input_state
         self.setMinimumSize(WORLD_W + _SIDE_W + 16, SCREEN_H)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setFocusPolicy(Qt.StrongFocus)
+
+    def _sync_input(self) -> None:
+        if self._input is None:
+            return
+        self._input.left  = Qt.Key_Left  in self._held or Qt.Key_A in self._held
+        self._input.right = Qt.Key_Right in self._held or Qt.Key_D in self._held
+        self._input.jump  = bool(self._held & _JUMP_KEYS)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
@@ -48,9 +66,8 @@ class IcyTowerRenderer(QWidget):
 
     def _draw_board(self, p: QPainter, ox: int, oy: int,
                     bw: int, bh: int, scale: float, pal) -> None:
-        s = self._state
+        s = self.state
 
-        # Sky gradient background
         grad = QLinearGradient(ox, oy, ox, oy + bh)
         if pal.dark:
             grad.setColorAt(0.0, QColor(10, 14, 30))
@@ -79,17 +96,12 @@ class IcyTowerRenderer(QWidget):
         )
         sheen_w = max(2, wall_w // 3)
 
-        # Draw wall strips only over walled segments visible on screen
-        screen_top_y     = cam
-        screen_bottom_y  = cam + SCREEN_H
-
         for seg in s.segments:
             if not seg.walled:
                 continue
             seg_sy_top    = world_to_screen_y(seg.y_top)
             seg_sy_bottom = world_to_screen_y(seg.y_bottom)
 
-            # Clip to board
             draw_top    = max(oy, seg_sy_top)
             draw_bottom = min(oy + bh, seg_sy_bottom)
             if draw_bottom <= draw_top:
@@ -104,7 +116,6 @@ class IcyTowerRenderer(QWidget):
                 inner_x = wx + wall_w - sheen_w if wx == ox else wx
                 p.drawRect(inner_x, draw_top, sheen_w, h)
 
-            # Transition markers — dashed line at segment boundary
             for boundary_y in (seg_sy_top, seg_sy_bottom):
                 if oy <= boundary_y <= oy + bh:
                     pen = QPen(pal.border)
@@ -113,7 +124,6 @@ class IcyTowerRenderer(QWidget):
                     p.setPen(pen)
                     p.drawLine(ox, boundary_y, ox + bw, boundary_y)
 
-        # Wall-slide spark on active wall
         if s.on_wall != 0:
             spark_x = ox if s.on_wall == -1 else ox + bw - wall_w
             spark_color = QColor(pal.accent)
@@ -124,9 +134,8 @@ class IcyTowerRenderer(QWidget):
             ph_s = int(s.PLAYER_H * scale)
             p.drawRect(spark_x, py_s, wall_w, ph_s)
 
-        # Platforms
-        plat_color    = pal.piece(4)   # sky blue — normal
-        crumble_color = pal.piece(1)   # peach — crumble
+        plat_color    = pal.piece(4)
+        crumble_color = pal.piece(1)
         sheen_normal  = QColor(
             min(255, plat_color.red()   + 40),
             min(255, plat_color.green() + 40),
@@ -155,7 +164,6 @@ class IcyTowerRenderer(QWidget):
             p.setBrush(sheen)
             p.drawRoundedRect(sx + 2, sy + 1, max(4, sw - 4), sheen_h, _PLAT_R, _PLAT_R)
 
-            # Crack marks on crumble platforms
             if plat.crumble:
                 crack_pen = QPen(QColor(max(0, crumble_color.red() - 40),
                                         max(0, crumble_color.green() - 30),
@@ -167,7 +175,6 @@ class IcyTowerRenderer(QWidget):
                 p.drawLine(mid, sy + 2, mid + sw // 6, sy + sh - 2)
                 p.setPen(Qt.NoPen)
 
-        # Player
         px_s = ox + int(s.px * scale)
         py_s = oy + int((s.py - cam) * scale)
         pw   = int(s.PLAYER_W * scale)
@@ -186,7 +193,6 @@ class IcyTowerRenderer(QWidget):
 
         p.restore()
 
-        # Danger flash bar at bottom
         max_spd = _SPEED_BRACKETS[-1][1]
         if s.scroll_speed >= 1.3 and max_spd > 0:
             intensity = (s.scroll_speed - 1.3) / (max_spd - 1.3)
@@ -198,7 +204,7 @@ class IcyTowerRenderer(QWidget):
             p.drawRect(ox, oy + bh - 6, bw, 6)
 
     def _draw_side(self, p: QPainter, x: int, oy: int, bh: int, pal) -> None:
-        s = self._state
+        s = self.state
 
         p.setPen(Qt.NoPen)
         p.setBrush(pal.surface)
@@ -239,7 +245,6 @@ class IcyTowerRenderer(QWidget):
             p.drawRoundedRect(x + 10, y, fill, bar_h, 3, 3)
         y += bar_h + 16
 
-        # Zone indicator
         walled = s.walled_at(s.py)
         zone_color = pal.piece(4) if walled else pal.piece(3)
         zone_text  = "WALLED" if walled else "OPEN"

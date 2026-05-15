@@ -15,7 +15,7 @@ MAX_SPEED      = 7.0
 BULLET_SPEED = 9.0
 BULLET_LIFE  = 45       # ticks
 MAX_BULLETS  = 4
-FIRE_COOLDOWN_TICKS = 8
+FIRE_COOLDOWN_TICKS = 16
 
 ASTEROID_SIZES = [40, 22, 12]   # radii by size index
 ASTEROID_SCORE = [20, 50, 100]  # points by size index (large→small)
@@ -48,6 +48,14 @@ class Asteroid:
     angle: float
     rot_speed: float
     size: int           # index into ASTEROID_SIZES
+
+
+@dataclass
+class InputState:
+    left:   bool = False
+    right:  bool = False
+    thrust: bool = False
+    fire:   bool = False
 
 
 @dataclass
@@ -148,11 +156,8 @@ class WaveCompleteEvent:
 
 def step(
     s: AsteroidsState,
-    rotate_left: bool,
-    rotate_right: bool,
-    thrust: bool,
+    inp: InputState,
     fire_cooldown: int,
-    do_fire: bool,
 ) -> tuple[int, list]:
     """
     Advance game state by one tick.
@@ -167,14 +172,14 @@ def step(
         fire_cooldown -= 1
 
     # Rotate
-    if rotate_left:
+    if inp.left:
         s.ship_angle -= SHIP_ROT_SPEED
-    if rotate_right:
+    if inp.right:
         s.ship_angle += SHIP_ROT_SPEED
 
     # Thrust
-    s.thrusting = thrust
-    if thrust:
+    s.thrusting = inp.thrust
+    if inp.thrust:
         rad = math.radians(s.ship_angle)
         s.ship_vx += math.sin(rad) * SHIP_ACCEL
         s.ship_vy -= math.cos(rad) * SHIP_ACCEL
@@ -195,8 +200,8 @@ def step(
     if s.invincible > 0:
         s.invincible -= 1
 
-    # Fire
-    if do_fire and fire_cooldown == 0 and len(s.bullets) < MAX_BULLETS:
+    # Fire — held flag, cooldown throttles rate
+    if inp.fire and fire_cooldown == 0 and len(s.bullets) < MAX_BULLETS:
         rad = math.radians(s.ship_angle)
         s.bullets.append(Bullet(
             x=s.ship_x + math.sin(rad) * 14,

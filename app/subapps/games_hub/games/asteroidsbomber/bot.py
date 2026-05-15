@@ -10,6 +10,7 @@ from app.subapps.games_hub.games.asteroidsbomber.game import (
     ASTEROID_SIZES, BOMB_BLAST_R,
     BOMB_MAX_LIVE, FIELD_H, FIELD_W,
     SHIP_ACCEL, SHIP_FRICTION, SHIP_RADIUS, SHIP_ROT_SPEED,
+    _Input,
 )
 
 # ── Tuning ─────────────────────────────────────────────────────────────────
@@ -142,51 +143,42 @@ def _asteroid_threat_vec(state: "ABState", ship_idx: int) -> tuple[float, float,
 # Steering primitives
 # ─────────────────────────────────────────────────────────────────────────
 
-def _set_keys(ship: "Ship", left: bool, right: bool, thrust: bool) -> None:
-    ship.held_left   = left
-    ship.held_right  = right
-    ship.held_thrust = thrust
+def _set_keys(inp: "_Input", left: bool, right: bool, thrust: bool) -> None:
+    inp.left   = left
+    inp.right  = right
+    inp.thrust = thrust
 
 
-def _steer_to_angle(ship: "Ship", desired_angle: float, thrust: bool) -> None:
-    """Turn toward desired_angle and optionally thrust."""
+def _steer_to_angle(ship: "Ship", inp: "_Input", desired_angle: float, thrust: bool) -> None:
     diff = _angle_diff(ship.angle, desired_angle)
     left  = diff < -TURN_DEAD_ZONE
     right = diff > TURN_DEAD_ZONE
-    _set_keys(ship, left, right, thrust)
+    _set_keys(inp, left, right, thrust)
 
 
-def _steer_toward_point(ship: "Ship", tx: float, ty: float, *,
+def _steer_toward_point(ship: "Ship", inp: "_Input", tx: float, ty: float, *,
                          allow_thrust: bool = True, brake: bool = False) -> None:
-    """
-    Point ship at tx,ty and thrust if reasonably aligned.
-    With brake=True, also thrust in reverse (point away and thrust) when close
-    and moving fast toward the target — prevents overshooting.
-    """
     dist = _wrap_dist(ship.x, ship.y, tx, ty)
     desired = _bearing(ship.x, ship.y, tx, ty)
     diff = _angle_diff(ship.angle, desired)
 
-    # Braking: if we're close AND our velocity vector points toward the target, flip and burn
     if brake and dist < BRAKE_THRESHOLD:
         vspeed = math.hypot(ship.vx, ship.vy)
         if vspeed > 1.5:
             vel_bearing = math.degrees(math.atan2(ship.vx, -ship.vy)) % 360
             vel_toward = abs(_angle_diff(vel_bearing, desired)) < 90
             if vel_toward and vspeed > 2.0:
-                # Point opposite to velocity and burn
                 brake_angle = (vel_bearing + 180) % 360
-                _steer_to_angle(ship, brake_angle, thrust=True)
+                _steer_to_angle(ship, inp, brake_angle, thrust=True)
                 return
 
     thrust = allow_thrust and abs(diff) < 50
-    _steer_to_angle(ship, desired, thrust)
+    _steer_to_angle(ship, inp, desired, thrust)
 
 
-def _steer_along_vector(ship: "Ship", dx: float, dy: float) -> None:
-    """Thrust in the direction of (dx,dy)."""
+def _steer_along_vector(ship: "Ship", inp: "_Input", dx: float, dy: float) -> None:
     angle = math.degrees(math.atan2(dx, -dy)) % 360
-    _steer_to_angle(ship, angle, thrust=True)
+    _steer_to_angle(ship, inp, angle, thrust=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -210,7 +202,7 @@ def _intercept_point(ship: "Ship", target: "Ship") -> tuple[float, float]:
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────────
 
-def bot_act(state: "ABState", bot_idx: int, place_bomb: Callable[[], None]) -> None:
+def bot_act(state: "ABState", bot_idx: int, inp: "_Input", place_bomb: Callable[[], None]) -> None:
     """Called once per game tick for each bot ship."""
     ship = state.ships[bot_idx]
     if not ship.alive:
@@ -219,33 +211,31 @@ def bot_act(state: "ABState", bot_idx: int, place_bomb: Callable[[], None]) -> N
     # ── Phase 0: Evade predicted bomb blast ───────────────────────────────
     threat_level, esc_dx, esc_dy = _bomb_threat_vec(state, bot_idx)
     if threat_level > 0:
-        _steer_along_vector(ship, esc_dx, esc_dy)
+        _steer_along_vector(ship, inp, esc_dx, esc_dy)
         return
 
     # ── Phase 1: Avoid asteroids (velocity-predictive) ────────────────────
     ast_edge_dist, rep_dx, rep_dy = _asteroid_threat_vec(state, bot_idx)
     if ast_edge_dist < ASTEROID_AVOID_R:
-        _steer_along_vector(ship, rep_dx, rep_dy)
+        _steer_along_vector(ship, inp, rep_dx, rep_dy)
         return
 
     # ── Phase 2: Hunt closest enemy ───────────────────────────────────────
     target = _pick_target(state, bot_idx)
     if target is None:
-        _set_keys(ship, False, False, False)
+        _set_keys(inp, False, False, False)
         return
 
     dist = _wrap_dist(ship.x, ship.y, target.x, target.y)
 
-    # Try to place bomb if in range and we won't self-detonate
     if (dist < BOMB_FIRE_DIST
             and ship.bomb_cooldown == 0
             and ship.bombs_live < BOMB_MAX_LIVE
             and dist > BOMB_BLAST_R * 1.15):
         place_bomb()
 
-    # Steer toward predicted intercept point, brake when close
     tx, ty = _intercept_point(ship, target)
-    _steer_toward_point(ship, tx, ty, allow_thrust=True, brake=True)
+    _steer_toward_point(ship, inp, tx, ty, allow_thrust=True, brake=True)
 
 
 def _pick_target(state: "ABState", bot_idx: int):

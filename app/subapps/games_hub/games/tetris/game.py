@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 COLS = 10
@@ -122,6 +122,7 @@ class TetrisGame(BaseGame):
         self._state = TetrisState.empty()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
         self._widget: QWidget | None = None
         self._das_timer = QTimer(self)   # delayed auto-shift
         self._das_timer.setSingleShot(True)
@@ -129,66 +130,40 @@ class TetrisGame(BaseGame):
         self._arr_timer = QTimer(self)   # auto-repeat rate
         self._arr_timer.setInterval(50)
         self._arr_timer.timeout.connect(self._arr_tick)
-        self._held_action: Action | None = None
+        self._held_dc: int = 0           # -1 = left, 0 = none, 1 = right
 
     # ------------------------------------------------------------------
     # BaseGame contract
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.tetris.renderer import TetrisRenderer
-        self._widget = TetrisRenderer(self._state)
+        self._widget = TetrisRenderer(self._state, game=self)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = TetrisState.empty()
         self._state.piece_type = self._state.next_type
         self._state.next_type = random.randrange(len(_PIECES))
         self._state.piece, self._state.pivot = _spawn(self._state.piece_type)
         if self._widget is not None:
-            self._widget._state = self._state  # keep renderer in sync with new state
+            self._widget.state = self._state
         self._sync_widget()
         super().start(mode, players)
         self._start_timer()
 
     def pause(self) -> None:
-        self._timer.stop()
         self._das_timer.stop()
         self._arr_timer.stop()
-        super().pause()
+        super().pause()   # stops _timer via _timers
 
     def resume(self) -> None:
         super().resume()
         self._start_timer()
 
     def stop(self) -> None:
-        self._timer.stop()
         self._das_timer.stop()
         self._arr_timer.stop()
         super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        if action == Action.LEFT:
-            self._move(0, -1)
-            self._held_action = Action.LEFT
-            self._das_timer.start(170)
-        elif action == Action.RIGHT:
-            self._move(0, 1)
-            self._held_action = Action.RIGHT
-            self._das_timer.start(170)
-        elif action == Action.DOWN:
-            self._move(1, 0)
-        elif action == Action.UP:
-            self._rotate_piece()
-        elif action == Action.FIRE:
-            self._hard_drop()
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        if action in (Action.LEFT, Action.RIGHT) and action == self._held_action:
-            self._held_action = None
-            self._das_timer.stop()
-            self._arr_timer.stop()
 
     def get_state(self) -> dict:
         return {
@@ -258,18 +233,41 @@ class TetrisGame(BaseGame):
         if not _valid(self._state.board, self._state.piece):
             self._timer.stop()
             self._set_state(GameState.OVER)
-            self.game_over.emit({"p1": self._state.score})
+            self.game_over.emit(GameResult(scores={0: self._state.score}, winner=None))
         else:
             self._sync_widget()
+
+    # ------------------------------------------------------------------
+    # Key action API called by renderer
+
+    def on_shift_start(self, dc: int) -> None:
+        """Called when left (-1) or right (1) key is pressed."""
+        self._held_dc = dc
+        self._move(0, dc)
+        self._das_timer.start(170)
+
+    def on_shift_end(self, dc: int) -> None:
+        """Called when left or right key is released."""
+        if self._held_dc == dc:
+            self._held_dc = 0
+            self._das_timer.stop()
+            self._arr_timer.stop()
+
+    def on_rotate(self) -> None:
+        self._rotate_piece()
+
+    def on_soft_drop(self) -> None:
+        self._move(1, 0)
+
+    def on_hard_drop(self) -> None:
+        self._hard_drop()
 
     def _start_arr(self) -> None:
         self._arr_timer.start()
 
     def _arr_tick(self) -> None:
-        if self._held_action == Action.LEFT:
-            self._move(0, -1)
-        elif self._held_action == Action.RIGHT:
-            self._move(0, 1)
+        if self._held_dc != 0:
+            self._move(0, self._held_dc)
 
     def _sync_widget(self) -> None:
         if self._widget is not None:

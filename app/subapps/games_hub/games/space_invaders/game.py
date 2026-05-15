@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 FIELD_W = 480
@@ -35,6 +35,15 @@ BOMB_INTERVAL = 1200       # ms between enemy bombs
 BOMB_SPEED = 4
 
 TICK_MS = 16
+
+
+from dataclasses import dataclass as _dc  # noqa: E402
+
+@_dc
+class _Input:
+    left:  bool = False
+    right: bool = False
+    fire:  bool = False
 
 
 @dataclass
@@ -110,7 +119,8 @@ class SpaceInvadersGame(BaseGame):
 
     def __init__(self) -> None:
         super().__init__()
-        self._state = SpaceInvadersState.new()
+        self._state  = SpaceInvadersState.new()
+        self._input  = _Input()
         self._move_timer = QTimer(self)
         self._move_timer.timeout.connect(self._move_invaders)
         self._tick_timer = QTimer(self)
@@ -118,60 +128,26 @@ class SpaceInvadersGame(BaseGame):
         self._tick_timer.timeout.connect(self._tick)
         self._bomb_timer = QTimer(self)
         self._bomb_timer.timeout.connect(self._drop_bomb)
+        self._timers.extend([self._move_timer, self._tick_timer, self._bomb_timer])
         self._widget: QWidget | None = None
-        self._held_left = False
-        self._held_right = False
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.space_invaders.renderer import SpaceInvadersRenderer
-        self._widget = SpaceInvadersRenderer(self._state)
+        self._widget = SpaceInvadersRenderer(self._state, self._input)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = SpaceInvadersState.new()
-        self._held_left = self._held_right = False
+        self._input.left = self._input.right = self._input.fire = False
         if self._widget is not None:
-            self._widget._state = self._state  # type: ignore[attr-defined]
+            self._widget.state = self._state
+            self._widget.clear_held()
         super().start(mode, players)
         self._start_timers()
 
-    def pause(self) -> None:
-        self._move_timer.stop()
-        self._tick_timer.stop()
-        self._bomb_timer.stop()
-        super().pause()
-
     def resume(self) -> None:
         super().resume()
-        self._start_timers()
-
-    def stop(self) -> None:
-        self._move_timer.stop()
-        self._tick_timer.stop()
-        self._bomb_timer.stop()
-        super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        if action == Action.LEFT:
-            self._held_left = True
-        elif action == Action.RIGHT:
-            self._held_right = True
-        elif action in (Action.FIRE, Action.UP) and self._state.can_fire:
-            s = self._state
-            s.bullets.append(Bullet(
-                x=s.player_x + PLAYER_W / 2 - BULLET_W / 2,
-                y=PLAYER_Y - BULLET_H,
-                vy=-BULLET_SPEED,
-            ))
-            s.can_fire = False
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        if action == Action.LEFT:
-            self._held_left = False
-        elif action == Action.RIGHT:
-            self._held_right = False
+        self._move_timer.setInterval(self._move_speed())
 
     def get_state(self) -> dict:
         s = self._state
@@ -232,10 +208,19 @@ class SpaceInvadersGame(BaseGame):
         s = self._state
 
         # Move player
-        if self._held_left:
+        if self._input.left:
             s.player_x = max(0, s.player_x - PLAYER_SPEED)
-        if self._held_right:
+        if self._input.right:
             s.player_x = min(FIELD_W - PLAYER_W, s.player_x + PLAYER_SPEED)
+
+        # Fire
+        if self._input.fire and s.can_fire:
+            s.bullets.append(Bullet(
+                x=s.player_x + PLAYER_W / 2,
+                y=PLAYER_Y,
+                vy=-BULLET_SPEED,
+            ))
+            s.can_fire = False
 
         # Move bullets
         to_remove: list[int] = []
@@ -270,7 +255,7 @@ class SpaceInvadersGame(BaseGame):
             new.player_x = s.player_x
             self._state = new
             if self._widget is not None:
-                self._widget._state = self._state  # type: ignore[attr-defined]
+                self._widget.state = self._state
             self._move_timer.setInterval(self._move_speed())
             self._sync()
             return
@@ -285,11 +270,8 @@ class SpaceInvadersGame(BaseGame):
         self._sync()
 
     def _end_game(self) -> None:
-        self._move_timer.stop()
-        self._tick_timer.stop()
-        self._bomb_timer.stop()
         self._set_state(GameState.OVER)
-        self.game_over.emit({"p1": self._state.score})
+        self.game_over.emit(GameResult(scores={0: self._state.score}, winner=None))
 
     def _sync(self) -> None:
         if self._widget is not None:

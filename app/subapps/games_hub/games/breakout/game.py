@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
-from app.subapps.games_hub.base_game import Action, BaseGame, GameMode, GameState, PlayerSlot
+from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, GameState
 from app.subapps.games_hub.ui import register_game
 
 FIELD_W = 480
@@ -34,6 +34,13 @@ TICK_MS = 16
 
 # Points per row (bottom rows worth more)
 _ROW_POINTS = [50, 40, 30, 20, 10, 10]
+
+
+@dataclass
+class _Input:
+    left:  bool = False
+    right: bool = False
+    fire:  bool = False
 
 
 @dataclass
@@ -93,54 +100,27 @@ class BreakoutGame(BaseGame):
 
     def __init__(self) -> None:
         super().__init__()
-        self._state = BreakoutState.new()
-        self._timer = QTimer(self)
+        self._state  = BreakoutState.new()
+        self._input  = _Input()
+        self._timer  = QTimer(self)
         self._timer.setInterval(TICK_MS)
         self._timer.timeout.connect(self._tick)
+        self._timers.append(self._timer)
         self._widget: QWidget | None = None
-        self._held_left = False
-        self._held_right = False
 
     def create_widget(self) -> QWidget:
         from app.subapps.games_hub.games.breakout.renderer import BreakoutRenderer
-        self._widget = BreakoutRenderer(self._state)
+        self._widget = BreakoutRenderer(self._state, self._input)
         return self._widget
 
-    def start(self, mode: GameMode, players: dict[PlayerSlot, str]) -> None:
+    def start(self, mode: GameMode, players: dict[int, str]) -> None:
         self._state = BreakoutState.new()
-        self._held_left = self._held_right = False
+        self._input.left = self._input.right = self._input.fire = False
         if self._widget is not None:
-            self._widget._state = self._state  # type: ignore[attr-defined]
+            self._widget.state = self._state
+            self._widget.clear_held()
         super().start(mode, players)
         self._timer.start()
-
-    def pause(self) -> None:
-        self._timer.stop()
-        super().pause()
-
-    def resume(self) -> None:
-        super().resume()
-        self._timer.start()
-
-    def stop(self) -> None:
-        self._timer.stop()
-        super().stop()
-
-    def key_press(self, action: Action, slot: PlayerSlot) -> None:
-        if self._game_state != GameState.RUNNING:
-            return
-        if action == Action.LEFT:
-            self._held_left = True
-        elif action == Action.RIGHT:
-            self._held_right = True
-        elif action in (Action.FIRE, Action.UP) and not self._state.launched:
-            self._launch()
-
-    def key_release(self, action: Action, slot: PlayerSlot) -> None:
-        if action == Action.LEFT:
-            self._held_left = False
-        elif action == Action.RIGHT:
-            self._held_right = False
 
     def get_state(self) -> dict:
         s = self._state
@@ -162,10 +142,13 @@ class BreakoutGame(BaseGame):
         s = self._state
 
         # Move paddle
-        if self._held_left:
+        if self._input.left:
             s.paddle_x = max(0, s.paddle_x - PADDLE_SPEED)
-        if self._held_right:
+        if self._input.right:
             s.paddle_x = min(FIELD_W - PADDLE_W, s.paddle_x + PADDLE_SPEED)
+
+        if not s.launched and self._input.fire:
+            self._launch()
 
         if not s.launched:
             s.ball_x = s.paddle_x + PADDLE_W / 2
@@ -207,7 +190,7 @@ class BreakoutGame(BaseGame):
             if s.lives <= 0:
                 self._timer.stop()
                 self._set_state(GameState.OVER)
-                self.game_over.emit({"p1": s.score})
+                self.game_over.emit(GameResult(scores={0: s.score}, winner=None))
                 return
             s.reset_ball()
             self._sync()
