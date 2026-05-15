@@ -9,140 +9,124 @@ from app.subapps.games_hub.base_game import BaseGame, GameMode, GameResult, Game
 from app.subapps.games_hub.games.asteroids.game_core import (
     AsteroidsState, GameOverEvent, HitEvent, InputState, TICK_MS, MAX_BULLETS,
 )
-from app.subapps.games_hub.games.asteroids.nn_brain import GeneticTrainer
+from app.subapps.games_hub.games.asteroids.nn_brain import BackgroundEvolver, GeneticTrainer
 from app.subapps.games_hub.games.asteroids.nn_bot import AsteroidsBot
-
-BOT_MAX_TICKS = 60 * 60 * 3   # 3-minute hard cap per bot run
 
 
 # ---------------------------------------------------------------------------
-# Bot runner — owns evolution loop and per-bot fitness counters
+# Display runner — drives one live bot (always the current best genome)
 
 class BotRunner:
-    def __init__(self) -> None:
-        self.trainer:     GeneticTrainer = GeneticTrainer()
-        self.bot_index:   int            = 0
-        self.current_bot: AsteroidsBot   = AsteroidsBot(self.trainer.population[0])
-        self.viz_callback = None          # callable(net, activations) | None
-        self._reset_counters(0.0)
+    def __init__(self, evolver: BackgroundEvolver) -> None:
+        self.evolver       = evolver
+        self.viz_callback  = None
+        self._ticks        = 0
+        self._live_bot_idx = 0
+        self._live_bot_gen = 0
+        self._current_bot  = self._load_best()
+        self._reset_counters()
 
-    def _reset_counters(self, initial_angle: float) -> None:
-        self._ticks       = 0
-        self._dist        = 0.0
-        self._shots_fired = 0
-        self._shots_hit   = 0
-        self._facing_sum  = 0.0
-        self._rot_sum     = 0.0
-        self._prev_angle  = initial_angle
+    def _load_best(self) -> AsteroidsBot:
+        s   = self.evolver.stats
+        net = self.evolver.best_net
+        if net is None:
+            from app.subapps.games_hub.games.asteroids.nn_brain import NeuralNet
+            net = NeuralNet()
+        self._live_bot_idx = s["best_idx"]
+        self._live_bot_gen = s["best_gen"]
+        return AsteroidsBot(net)
+
+    def _reset_counters(self) -> None:
+        self._ticks        = 0
+        self._shots_fired  = 0
+        self._shots_hit    = 0
+        self._kills        = 0
+        self._dist         = 0.0
+        self._rot_sum      = 0.0
+        self._prev_angle   = 0.0
 
     def reset(self, state: AsteroidsState) -> None:
-        self._reset_counters(state.ship_angle)
+        self._current_bot = self._load_best()
+        self._reset_counters()
+        self._prev_angle = state.ship_angle
 
-    # ------------------------------------------------------------------
-    # Per-tick API
-
-    def decide(self, state: AsteroidsState) -> tuple[bool, bool, bool, bool]:
-        want_viz = self.viz_callback is not None and self._ticks % 6 == 0
-        if want_viz:
-            rot_l, rot_r, thrust, fire, acts = self.current_bot.decide(state, with_activations=True)
-            self.viz_callback(self.current_bot.net, acts)
-        else:
-            rot_l, rot_r, thrust, fire = self.current_bot.decide(state)
-        return rot_l, rot_r, thrust, fire
-
-    def record_shot_fired(self) -> None:
-        self._shots_fired += 1
-
-    def record_tick(self, state: AsteroidsState, events: list) -> None:
+    def record_tick(self, state: AsteroidsState, fired: bool, events: list) -> None:
         self._ticks += 1
         self._dist  += math.hypot(state.ship_vx, state.ship_vy)
-        self._shots_hit += sum(1 for e in events if isinstance(e, HitEvent))
-
-        if state.asteroids:
-            rad = math.radians(state.ship_angle)
-            sdx, sdy = math.sin(rad), -math.cos(rad)
-            nearest = min(state.asteroids,
-                          key=lambda a: math.hypot(a.x - state.ship_x, a.y - state.ship_y))
-            d = math.hypot(nearest.x - state.ship_x, nearest.y - state.ship_y)
-            if d > 0:
-                self._facing_sum += max(0.0,
-                    sdx * (nearest.x - state.ship_x) / d +
-                    sdy * (nearest.y - state.ship_y) / d)
-
+        if fired:
+            self._shots_fired += 1
+        for evt in events:
+            if isinstance(evt, HitEvent):
+                self._shots_hit += 1
+                # HitEvent fires for every bullet→asteroid contact; only the
+                # smallest size is actually destroyed (100 pts). Large/medium
+                # asteroids split instead of dying.
+                if evt.points == 100:
+                    self._kills += 1
         delta = abs(state.ship_angle - self._prev_angle)
         if delta > 180:
             delta = 360 - delta
-        self._rot_sum    += delta
-        self._prev_angle  = state.ship_angle
+        self._rot_sum   += delta
+        self._prev_angle = state.ship_angle
 
-    @property
-    def ticks(self) -> int:
-        return self._ticks
+    def decide(self, state: AsteroidsState, fire_cooldown: int = 0) -> tuple[bool, bool, bool, bool]:
+        if self.viz_callback is not None and self._ticks % 6 == 0:
+            rot_l, rot_r, thrust, fire, acts = self._current_bot.decide_with_activations(state, fire_cooldown)
+            self.viz_callback(self._current_bot.net, acts)
+            return rot_l, rot_r, thrust, fire
+        return self._current_bot.decide(state, fire_cooldown)
 
-    @property
-    def at_tick_cap(self) -> bool:
-        return self._ticks >= BOT_MAX_TICKS
-
-    # ------------------------------------------------------------------
-    # Evolution
-
-    def advance(self, score: int) -> None:
-        """Score current bot, evolve if generation complete, load next bot."""
-        self.trainer.record_fitness(self.bot_index, self._compute_fitness(score))
-
-        self.bot_index += 1
-        if self.bot_index >= self.trainer.POP_SIZE:
-            self.trainer.evolve()
-            self.bot_index = 0
-
-        self.current_bot = AsteroidsBot(self.trainer.population[self.bot_index])
-
-    def get_stats(self) -> dict:
-        t = self.trainer
+    def episode_breakdown(self, score: int) -> dict:
+        from app.subapps.games_hub.games.asteroids.nn_brain import _fitness_breakdown
+        shots_missed = max(0, self._shots_fired - self._shots_hit)
         return {
-            "generation":   t.generation,
-            "bot":          self.bot_index + 1,
-            "pop_size":     t.POP_SIZE,
-            "best_fitness": t.best_fitness,
-            "best_ever":    t.best_ever,
+            "bot_idx":      self._live_bot_idx,
+            "bot_gen":      self._live_bot_gen,
             "ticks":        self._ticks,
+            "game_score":   score,
+            "kills":        self._kills,
+            "shots_fired":  self._shots_fired,
+            "shots_hit":    self._shots_hit,
+            "shots_missed": shots_missed,
+            "accuracy_pct": round(self._shots_hit / self._shots_fired * 100, 1) if self._shots_fired else 0.0,
+            "fitness":      _fitness_breakdown(self._ticks, score, self._shots_fired,
+                                               self._shots_hit, self._kills,
+                                               self._dist, self._rot_sum),
         }
 
-    # ------------------------------------------------------------------
-    # Fitness
-
-    def _compute_fitness(self, score: int) -> float:
-        ticks = max(self._ticks, 1)
-        base  = self._ticks + score * 2
-
-        if self._shots_fired > 0:
-            accuracy       = self._shots_hit / self._shots_fired
-            accuracy_bonus = accuracy * self._shots_hit * 30
-        else:
-            accuracy_bonus = 0.0
-
-        facing_bonus     = (self._facing_sum / ticks) * ticks * 0.3
-        avg_speed        = self._dist / ticks
-        movement_penalty = max(0.0, 1.0 - avg_speed) * ticks * 0.5
-        avg_rot          = self._rot_sum / ticks
-        spin_penalty     = max(0.0, avg_rot - 6.0) * max(0.0, 1.0 - avg_speed) * ticks * 0.4
-
-        return base + accuracy_bonus + facing_bonus - movement_penalty - spin_penalty
+    def get_stats(self) -> dict:
+        s = self.evolver.stats
+        return {
+            "generation":    s["generation"],
+            "bot":           self._live_bot_idx,
+            "bot_gen":       self._live_bot_gen,
+            "pop_size":      s["pop_size"],
+            "best_fitness":  s["best_fitness"],       # current-gen winner
+            "best_ever":     s["champion_fitness"],   # champion on latest seeds
+            "best_ever_gen": s["best_gen"],
+            "ticks":         self._ticks,
+            "stagnant":      s["stagnant"],
+            "hard_thresh":   s["hard_thresh"],
+        }
 
 
 # ---------------------------------------------------------------------------
-# Bot game — separate BaseGame subclass, no user input
+# Bot game — drives the live display, background evolver runs independently
 
 class AsteroidsBotGame(BaseGame):
     game_id      = "asteroids_bot"
     display_name = "Asteroids — Bot"
     icon_char    = "🤖"
 
+    # Hard cap for the display bot (3 min); background bots have their own cap
+    _DISPLAY_MAX_TICKS = 60 * 60 * 3
+
     def __init__(self) -> None:
         super().__init__()
         self._state         = AsteroidsState.new()
         self._fire_cooldown = 0
-        self._bot           = BotRunner()
+        self._evolver       = BackgroundEvolver()
+        self._bot           = BotRunner(self._evolver)
         self._widget: QWidget | None = None
 
         self._timer = QTimer(self)
@@ -177,12 +161,18 @@ class AsteroidsBotGame(BaseGame):
 
     def start(self, mode: GameMode, players: dict[int, str]) -> None:
         viz_cb = self._bot.viz_callback
-        self._bot = BotRunner()
+        self._evolver = BackgroundEvolver()
+        self._bot = BotRunner(self._evolver)
         self._bot.viz_callback = viz_cb
+        self._evolver.start()
         self._reset_state()
         self._set_state(GameState.RUNNING)
         self._push_stats()
         self._timer.start()
+
+    def stop(self) -> None:
+        self._evolver.stop()
+        super().stop()
 
     # Bot games don't pause — evolution runs continuously
     def pause(self) -> None:
@@ -190,8 +180,6 @@ class AsteroidsBotGame(BaseGame):
 
     def resume(self) -> None:
         pass
-
-    # No keyboard input — ship is driven entirely by the neural net
 
     def get_state(self) -> dict:
         s = self._state
@@ -211,25 +199,32 @@ class AsteroidsBotGame(BaseGame):
         return False
 
     def toolbar_actions(self) -> list[tuple[str, object]]:
-        return [("Save", self._save), ("Load", self._load)]
+        return [("Skip", self._skip), ("Save", self._save), ("Load", self._load)]
 
     # ------------------------------------------------------------------
     # Save / load
 
+    def _skip(self) -> None:
+        self._write_episode_stats(self._state.score)
+        self._reset_state()
+        self._push_stats()
+
     def _save(self) -> None:
-        from app.subapps.games_hub.games.asteroids.nn_brain import GeneticTrainer
-        self._bot.trainer.save(GeneticTrainer.default_save_path())
+        self._evolver.save(GeneticTrainer.default_save_path())
 
     def _load(self) -> None:
-        from app.subapps.games_hub.games.asteroids.nn_brain import GeneticTrainer
-        from app.subapps.games_hub.games.asteroids.nn_bot import AsteroidsBot
+        from PySide6.QtWidgets import QMessageBox
         path = GeneticTrainer.default_save_path()
         if not path.exists():
             return
-        trainer = GeneticTrainer.load(path)
-        self._bot.trainer     = trainer
-        self._bot.bot_index   = 0
-        self._bot.current_bot = AsteroidsBot(trainer.population[0])
+        self._evolver.stop()
+        try:
+            self._evolver.load(path)
+        except ValueError as exc:
+            QMessageBox.warning(self._widget, "Load failed", str(exc))
+            self._evolver.start()
+            return
+        self._evolver.start()
         self._reset_state()
 
     # ------------------------------------------------------------------
@@ -240,8 +235,8 @@ class AsteroidsBotGame(BaseGame):
         self._fire_cooldown = 0
         self._bot.reset(self._state)
         if self._widget is not None:
-            self._widget.state      = self._state
-            self._widget.bot_stats  = {}
+            self._widget.state     = self._state
+            self._widget.bot_stats = {}
 
     def _push_stats(self) -> None:
         if self._widget is not None:
@@ -253,34 +248,38 @@ class AsteroidsBotGame(BaseGame):
         s   = self._state
         bot = self._bot
 
-        rot_l, rot_r, thrust, fire = bot.decide(s)
+        rot_l, rot_r, thrust, fire = bot.decide(s, self._fire_cooldown)
 
-        will_fire = fire and self._fire_cooldown == 0 and len(s.bullets) < MAX_BULLETS
-        if will_fire:
-            bot.record_shot_fired()
-
+        # step() decrements cooldown before checking it, so a shot fires when cooldown <= 1
+        will_fire = fire and self._fire_cooldown <= 1 and len(s.bullets) < MAX_BULLETS
         inp = InputState(left=rot_l, right=rot_r, thrust=thrust, fire=fire)
         self._fire_cooldown, events = step(s, inp, self._fire_cooldown)
+
+        bot.record_tick(s, will_fire, events)
 
         for evt in events:
             if isinstance(evt, HitEvent):
                 self.score_tick.emit(f"Score: {s.score:,}")
             elif isinstance(evt, GameOverEvent):
-                bot.advance(s.score)
+                self._write_episode_stats(s.score)
                 self._reset_state()
                 self._push_stats()
                 return
 
-        bot.record_tick(s, events)
-
-        if bot.at_tick_cap:
-            bot.advance(s.score)
+        if bot._ticks >= self._DISPLAY_MAX_TICKS:
+            self._write_episode_stats(s.score)
             self._reset_state()
             self._push_stats()
             return
 
-        if bot.ticks % 30 == 0:
+        if bot._ticks % 30 == 0:
             self._push_stats()
 
         if self._widget is not None:
             self._widget.update()
+
+    def _write_episode_stats(self, score: int) -> None:
+        import json
+        breakdown = self._bot.episode_breakdown(score)
+        path = GeneticTrainer.default_save_path().parent / "live_stats.json"
+        path.write_text(json.dumps(breakdown, indent=2), encoding="utf-8")

@@ -128,12 +128,21 @@ class AsteroidsRenderer(KeyHandler, QWidget):
         # HUD
         p.setPen(pal.text_muted)
         if self.bot_stats:
-            bs = self.bot_stats
-            p.drawText(6, 18, f"Score: {s.score}   Wave: {s.wave}")
+            bs  = self.bot_stats
+            max_ticks = 60 * 60 * 3
+            remaining = max(0, max_ticks - bs['ticks'])
+            timeout_s = remaining // 60
+
+            sg = bs['stagnant']
+            stagnant_str = f"stagnant {sg}/{bs['hard_thresh']}" if sg > 0 else "evolving"
+
+            p.drawText(6, 18,
+                f"Wave: {s.wave:<2}  Score: {s.score:>6}  Lives: {s.lives}/3  "
+                f"Playing Bot: {bs['bot']:>2}/{bs['pop_size']}  (gen {bs['bot_gen']:>4})  "
+                f"Timeout: {timeout_s:>3}s")
             p.drawText(6, 34,
-                f"Gen {bs['generation']}  Bot {bs['bot']}/{bs['pop_size']}  "
-                f"Best: {bs['best_fitness']:.0f}  Ever: {bs['best_ever']:.0f}  "
-                f"Ticks: {bs['ticks']}")
+                f"Background gen: {bs['generation']:>4}  [{stagnant_str}]  "
+                f"Best fitness: {bs['best_ever']:>8.0f}  (gen {bs['best_ever_gen']:>4})")
         else:
             p.drawText(6, 18, f"Score: {s.score}   Wave: {s.wave}   {'♥ ' * s.lives}")
             p.drawText(6, 34, "A/D rotate   W thrust   Space fire")
