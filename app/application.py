@@ -45,6 +45,7 @@ def _register_subapps() -> None:
     from app.subapps.dummy.core import DummySubApp
     from app.subapps.games_hub.core import GamesHubSubApp
     from app.subapps.programmer_calc.core import ProgrammerCalcSubApp
+    from app.subapps.scratchpad.core import ScratchpadSubApp
     from app.subapps.secret.core import SecretSubApp
     from app.subapps.settings.core import SettingsSubApp
 
@@ -63,6 +64,7 @@ def _register_subapps() -> None:
     registry.register(DummySubApp())
     registry.register(GamesHubSubApp())
     registry.register(ProgrammerCalcSubApp())
+    registry.register(ScratchpadSubApp())
     registry.register(SecretSubApp())
     registry.register(SettingsSubApp())
 
