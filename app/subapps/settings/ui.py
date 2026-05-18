@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QHBoxLayout,
+    QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QSpinBox,
     QVBoxLayout, QWidget,
 )
@@ -34,11 +34,21 @@ class _SettingWidget(QWidget):
             hl.addWidget(ctrl)
         elif defn.type == "choice" and defn.choices:
             ctrl = QComboBox()
-            ctrl.addItems([str(c) for c in defn.choices])
-            if current in defn.choices:
-                ctrl.setCurrentIndex(defn.choices.index(current))
+            # choices may be [value, ...] OR [(value, display_label), ...]
+            values: list = []
+            labels: list[str] = []
+            for c in defn.choices:
+                if isinstance(c, tuple) and len(c) == 2:
+                    values.append(c[0])
+                    labels.append(str(c[1]))
+                else:
+                    values.append(c)
+                    labels.append(str(c))
+            ctrl.addItems(labels)
+            if current in values:
+                ctrl.setCurrentIndex(values.index(current))
             ctrl.currentIndexChanged.connect(
-                lambda i, d=defn: settings_store.set(d.key, d.choices[i])  # type: ignore[index]
+                lambda i, vs=values, d=defn: settings_store.set(d.key, vs[i])
             )
             hl.addWidget(ctrl)
         else:
@@ -114,12 +124,26 @@ class SettingsPanel(QWidget):
             SettingDef("app.log_notify", "Forward log errors to notifications", "bool", False),
         ])
 
-        # Sub-app sections
+        # Sub-app sections (skip apps with no settings)
         for subapp in registry.all(include_hidden=True):
             defs = subapp.get_settings()
+            if not defs:
+                continue
+            self._add_separator()
             self._add_section(subapp.name, defs)
 
         self._content_layout.addStretch()
+
+    def _add_separator(self) -> None:
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setFixedHeight(1)
+        # slightly lighter than the panel background
+        line.setStyleSheet(
+            "background-color: palette(midlight); border: none; margin: 0 12px;"
+        )
+        self._content_layout.addWidget(line)
 
     def _add_section(self, title: str, defs: list[SettingDef]) -> None:
         section = QWidget()
@@ -132,12 +156,7 @@ class SettingsPanel(QWidget):
         lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
         section_layout.addWidget(lbl)
 
-        if not defs:
-            placeholder = QLabel("(no settings)")
-            placeholder.setStyleSheet("color: palette(mid); padding: 2px 0;")
-            section_layout.addWidget(placeholder)
-        else:
-            for defn in defs:
-                section_layout.addWidget(_SettingWidget(defn))
+        for defn in defs:
+            section_layout.addWidget(_SettingWidget(defn))
 
         self._content_layout.addWidget(section)

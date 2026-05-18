@@ -35,6 +35,7 @@ class SidePanel(QWidget):
         self._layout.addStretch()
 
         self._buttons: dict[str, QPushButton] = {}
+        self._unread: dict[str, int] = {}
 
         self._anim = QPropertyAnimation(self, b"minimumWidth")
         self._anim.setDuration(180)
@@ -61,12 +62,16 @@ class SidePanel(QWidget):
 
     def _update_button_appearance(self, btn: QPushButton, subapp: BaseSubApp) -> None:
         icon_char = getattr(subapp, "_icon_char", "⊞")
+        unread = self._unread.get(subapp.id, 0)
+        badge = f"  ({unread})" if unread else ""
         if self._expanded:
-            btn.setText(f"{icon_char}   {subapp.name}")
+            btn.setText(f"{icon_char}   {subapp.name}{badge}")
             btn.setStyleSheet("text-align: left; padding-left: 8px; font-size: 13px;")
             btn.setFixedWidth(_EXPANDED_W - 8)
         else:
-            btn.setText(icon_char)
+            # Collapsed: append a tiny dot when unread, since digits don't fit
+            dot = " •" if unread else ""
+            btn.setText(f"{icon_char}{dot}")
             btn.setStyleSheet("text-align: center; padding: 0; font-size: 16px;")
             btn.setFixedWidth(_COLLAPSED_W - 8)
         btn.setFixedHeight(36)
@@ -81,6 +86,27 @@ class SidePanel(QWidget):
     def set_active(self, subapp_id: str) -> None:
         for sid, btn in self._buttons.items():
             btn.setChecked(sid == subapp_id)
+        # activating a subapp clears its unread badge
+        if self._unread.get(subapp_id):
+            self.set_unread(subapp_id, 0)
+
+    def set_unread(self, subapp_id: str, count: int) -> None:
+        count = max(0, int(count))
+        if self._unread.get(subapp_id, 0) == count:
+            return
+        if count:
+            self._unread[subapp_id] = count
+        else:
+            self._unread.pop(subapp_id, None)
+        btn = self._buttons.get(subapp_id)
+        if btn is not None:
+            from app.core.registry import registry
+            subapp = registry.get(subapp_id)
+            if subapp is not None:
+                self._update_button_appearance(btn, subapp)
+
+    def increment_unread(self, subapp_id: str) -> None:
+        self.set_unread(subapp_id, self._unread.get(subapp_id, 0) + 1)
 
     # ------------------------------------------------------------------
     # toggle

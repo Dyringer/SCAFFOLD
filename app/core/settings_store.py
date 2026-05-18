@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from PySide6.QtCore import QObject, Signal
+
 from app.core.resource_manager import local_dir
 
 
@@ -19,8 +21,11 @@ class SettingDef:
     choices: list | None = field(default=None)
 
 
-class SettingsStore:
+class SettingsStore(QObject):
+    changed = Signal(str, object)   # key, new_value
+
     def __init__(self) -> None:
+        super().__init__()
         self._path = _settings_path()
         self._data: dict[str, Any] = {}
         self._load()
@@ -49,10 +54,14 @@ class SettingsStore:
             return
         self._data[key] = value
         self._save()
+        self.changed.emit(key, value)
 
     def set_many(self, pairs: dict[str, Any]) -> None:
+        changed_keys = [k for k, v in pairs.items() if self._data.get(k) != v]
         self._data.update(pairs)
         self._save()
+        for k in changed_keys:
+            self.changed.emit(k, self._data.get(k))
 
     def all_for_prefix(self, prefix: str) -> dict[str, Any]:
         return {k: v for k, v in self._data.items() if k.startswith(prefix)}

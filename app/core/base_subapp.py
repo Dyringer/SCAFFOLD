@@ -56,6 +56,17 @@ class BaseSubApp(QObject, metaclass=_Meta):
     def on_deactivated(self) -> None:
         pass
 
+    def shutdown(self) -> None:
+        """Release resources held by this subapp.
+
+        Called once during app teardown (in reverse registration order)
+        before services are stopped and the window is destroyed.
+        Default is a no-op; override when the subapp holds network
+        namespaces, file handles, child threads, or anything that
+        would otherwise pin the process.
+        """
+        pass
+
     def run_async(
         self,
         fn: Callable,

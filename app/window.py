@@ -47,6 +47,7 @@ class MainWindow(QWidget):
             body_stack=self._body_stack,
             footer=self._footer,
             command_palette=self._palette,
+            sidebar=self._sidebar,
         )
         registry.subapp_registered.connect(self._on_subapp_registered)
         registry.subapp_activated.connect(self._sidebar.set_active)
@@ -182,6 +183,22 @@ class MainWindow(QWidget):
         # minimise to tray instead of closing
         event.ignore()
         self.hide()
+
+    def shutdown(self) -> None:
+        """App-exit hook: persist geometry, release tray IPC.
+
+        Called from application._shutdown (after subapps and services).
+        Must NOT call QApplication.quit() — we're already inside the
+        aboutToQuit signal handler.
+        """
+        try:
+            self._save_geometry()
+        except Exception:
+            pass
+        try:
+            self._tray.hide()           # release Windows shell IPC
+        except Exception:
+            pass
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)

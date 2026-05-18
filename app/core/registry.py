@@ -37,11 +37,17 @@ class Registry(QObject):
         body_stack,
         footer,
         command_palette,
+        sidebar=None,
     ) -> None:
         self._header = header
         self._body_stack = body_stack
         self._footer = footer
         self._command_palette = command_palette
+        self._sidebar = sidebar
+
+    @property
+    def sidebar(self):
+        return self._sidebar
 
     # ------------------------------------------------------------------
     # registration
@@ -73,6 +79,19 @@ class Registry(QObject):
     # ------------------------------------------------------------------
     # activation
     # ------------------------------------------------------------------
+
+    def shutdown_all(self) -> None:
+        """Tear down every registered subapp, last-registered first.
+
+        Each subapp's shutdown() is best-effort: a failure in one is
+        logged and the next still runs. After this returns, no subapp
+        should hold a strong reference to a service or a native handle.
+        """
+        for subapp in reversed(list(self._apps.values())):
+            try:
+                subapp.shutdown()
+            except Exception:
+                log.exception("subapp %s shutdown failed", subapp.id)
 
     def activate(self, subapp_id: str) -> None:
         subapp = self._apps.get(subapp_id)
