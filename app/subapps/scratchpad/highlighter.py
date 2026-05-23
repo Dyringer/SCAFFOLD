@@ -10,7 +10,7 @@ from PySide6.QtGui import (
 from app.core.theme_manager import theme_manager
 
 
-def _palette(dark: bool) -> dict[str, QColor]:
+def palette(dark: bool) -> dict[str, QColor]:
     if dark:
         return {
             "heading": QColor("#82aaff"),
@@ -21,6 +21,7 @@ def _palette(dark: bool) -> dict[str, QColor]:
             "quote":   QColor("#888888"),
             "list":    QColor("#ffcb6b"),
             "hr":      QColor("#666666"),
+            "tag":     QColor("#f78c6c"),
         }
     return {
         "heading": QColor("#1f5fbf"),
@@ -31,6 +32,7 @@ def _palette(dark: bool) -> dict[str, QColor]:
         "quote":   QColor("#666666"),
         "list":    QColor("#a14a00"),
         "hr":      QColor("#999999"),
+        "tag":     QColor("#b34a2a"),
     }
 
 
@@ -48,7 +50,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     def _build_rules(self) -> None:
         dark = theme_manager.current == "dark"
-        c = _palette(dark)
+        c = palette(dark)
         rules: list[tuple[QRegularExpression, QTextCharFormat]] = []
 
         # Headings (#, ##, ###...)
@@ -98,6 +100,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         hr = QTextCharFormat()
         hr.setForeground(c["hr"])
         rules.append((QRegularExpression(r"^(\s*([-*_])\s*){3,}$"), hr))
+
+        tag = QTextCharFormat()
+        tag.setForeground(c["tag"])
+        tag.setFontWeight(QFont.Bold)
+        rules.append((QRegularExpression(r"(?<![\w/&])#[A-Za-z][\w\-]*"), tag))
 
         self._rules = rules
 
