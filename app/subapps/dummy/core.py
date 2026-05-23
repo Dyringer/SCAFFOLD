@@ -8,7 +8,7 @@ from app.core.base_subapp import BaseSubApp, SubAppState
 class DummySubApp(BaseSubApp):
     id = "dummy"
     name = "Test Suite"
-    hidden = False
+    hidden = True
     _icon_char = "👋"
 
     def __init__(self) -> None:

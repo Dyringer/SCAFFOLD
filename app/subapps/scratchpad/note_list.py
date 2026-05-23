@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtCore import Qt, QSize, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu,
     QVBoxLayout, QWidget,
 )
+
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from .models import format_modified
 from .store import Note
@@ -45,8 +47,9 @@ class _NoteItemWidget(QWidget):
 class NoteListWidget(QListWidget):
     """Sidebar note list. Emits signals instead of acting directly."""
 
-    note_selected = Signal(str)          # note_id
-    action_requested = Signal(str, str)  # action, note_id  ("pin","unpin","duplicate","rename","delete")
+    note_selected = Signal(str)          # note_id — single click / keyboard
+    note_new_tab = Signal(str)           # note_id — double click → open new tab
+    action_requested = Signal(str, str)  # action, note_id
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -54,6 +57,11 @@ class NoteListWidget(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
         self.currentItemChanged.connect(self._on_item_changed)
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.setInterval(250)
+        self._pending_single_click_id: str | None = None
+        self._click_timer.timeout.connect(self._fire_single_click)
 
     _PINNED_ROLE = Qt.UserRole + 1
 
@@ -94,8 +102,32 @@ class NoteListWidget(QListWidget):
                 return
 
     def _on_item_changed(self, current: QListWidgetItem | None, _prev) -> None:
-        if current is not None:
-            self.note_selected.emit(current.data(Qt.UserRole))
+        if current is None:
+            return
+        note_id = current.data(Qt.UserRole)
+        # Defer single-click so a double-click can cancel it.
+        self._pending_single_click_id = note_id
+        self._click_timer.start()
+
+    def _fire_single_click(self) -> None:
+        if self._pending_single_click_id is not None:
+            self.note_selected.emit(self._pending_single_click_id)
+            self._pending_single_click_id = None
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        super().keyPressEvent(event)
+        # Fire immediately on keyboard navigation — no double-click ambiguity.
+        self._click_timer.stop()
+        self._fire_single_click()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        item = self.itemAt(event.pos())
+        if item is not None:
+            self._click_timer.stop()
+            self._pending_single_click_id = None
+            self.note_new_tab.emit(item.data(Qt.UserRole))
+        else:
+            super().mouseDoubleClickEvent(event)
 
     def _on_context_menu(self, pos) -> None:
         item = self.itemAt(pos)

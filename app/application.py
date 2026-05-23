@@ -63,15 +63,16 @@ def _register_subapps() -> None:
     import app.subapps.games_hub.games.bomberman           # noqa: F401
     import app.subapps.games_hub.games.asteroidsbomber     # noqa: F401
 
-    registry.register(ChatSubApp())
-    registry.register(CounterSubApp())
-    registry.register(DummySubApp())
     registry.register(GamesHubSubApp())
-    registry.register(NetworkToolsSubApp())
     registry.register(ProgrammerCalcSubApp())
     registry.register(ScratchpadSubApp())
-    registry.register(SecretSubApp())
+    registry.register(ChatSubApp())
+    registry.register(NetworkToolsSubApp())
     registry.register(SettingsSubApp())
+
+    registry.register(CounterSubApp())
+    registry.register(DummySubApp())
+    registry.register(SecretSubApp())
 
 
 def run() -> None:
@@ -93,7 +94,6 @@ def run() -> None:
     from app.core.services import service_registry
     from app.services.network import network_service
     service_registry.register("network", network_service)
-    service_registry.start_all()
 
     # apply saved theme before building window
     theme_manager.apply(settings_store.get("app.theme", "light"))
@@ -161,11 +161,13 @@ def run() -> None:
     window.show()
     log.info("Window shown")
 
+    from PySide6.QtCore import QTimer
+    QTimer.singleShot(0, service_registry.start_all)
+
     # Test hook: auto-quit after N ms. Used by the integration test to
     # exercise the real shutdown path without manual UI interaction.
     auto_quit_ms = os.environ.get("SCAFFOLD_AUTO_QUIT_MS", "").strip()
     if auto_quit_ms.isdigit():
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(int(auto_quit_ms), app.quit)
     rc = app.exec()
     log.info("Event loop exited with rc=%d", rc)

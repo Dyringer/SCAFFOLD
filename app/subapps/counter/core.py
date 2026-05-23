@@ -19,7 +19,7 @@ class CountChanged(Message):
 class CounterSubApp(BaseSubApp):
     id = "counter"
     name = "Counter"
-    hidden = False
+    hidden = True
     _icon_char = "🔢"
 
     def __init__(self) -> None:
