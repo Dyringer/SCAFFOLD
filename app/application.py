@@ -50,6 +50,7 @@ def _register_subapps() -> None:
     from app.subapps.programmer_calc.core import ProgrammerCalcSubApp
     from app.subapps.scratchpad.core import ScratchpadSubApp
     from app.subapps.secret.core import SecretSubApp
+    from app.subapps.serial_terminal.core import SerialTerminalSubApp
     from app.subapps.settings.core import SettingsSubApp
 
     # Import game packages — each __init__.py registers games/composites
@@ -68,6 +69,7 @@ def _register_subapps() -> None:
     registry.register(ScratchpadSubApp())
     registry.register(ChatSubApp())
     registry.register(NetworkToolsSubApp())
+    registry.register(SerialTerminalSubApp())
     registry.register(SettingsSubApp())
 
     registry.register(CounterSubApp())
