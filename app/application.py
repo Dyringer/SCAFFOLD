@@ -63,6 +63,7 @@ def _register_subapps() -> None:
     import app.subapps.games_hub.games.pong                # noqa: F401
     import app.subapps.games_hub.games.bomberman           # noqa: F401
     import app.subapps.games_hub.games.asteroidsbomber     # noqa: F401
+    import app.subapps.games_hub.games.stacker             # noqa: F401
 
     registry.register(GamesHubSubApp())
     registry.register(ProgrammerCalcSubApp())
