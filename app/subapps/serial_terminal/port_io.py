@@ -61,11 +61,34 @@ class SerialPort(QObject):
     # enumeration
 
     @staticmethod
+    def _is_real_device(info: QSerialPortInfo) -> bool:
+        """Whether a port is a device a user would actually connect to.
+
+        Linux exposes every legacy 8250/16550 platform UART as `/dev/ttyS0..N`
+        (often 4-32 of them) whether or not anything is attached — pure noise
+        that buries the one USB adapter the user cares about. We drop those.
+
+        The discriminator is a USB identity, NOT a non-empty description:
+        cheap-but-real USB-serial chips (CH340, some CP210x/FTDI clones) often
+        report blank manufacturer/description strings, so filtering on text
+        alone would hide exactly the bargain adapters an embedded dev plugs in.
+        A genuine USB-serial device always exposes a USB vendor id; a platform
+        `ttyS*` never does. So: keep anything with a vendor id, and keep
+        anything that isn't a bare `ttyS*` (covers Windows COM*, ttyACM*,
+        ttyUSB*, virtual/PTY ports, and any future non-USB transport).
+        """
+        if info.hasVendorIdentifier():
+            return True
+        return not info.portName().startswith("ttyS")
+
+    @staticmethod
     def available_ports() -> list[tuple[str, str]]:
         """Return [(port_name, description)] for all detected serial ports.
 
         On Windows these are `COM*`; on Linux QtSerialPort surfaces
-        `/dev/ttyACM*` and `/dev/ttyUSB*` (and others) automatically.
+        `/dev/ttyACM*` and `/dev/ttyUSB*` (and others) automatically. Legacy
+        platform UARTs (`/dev/ttyS*` with no USB identity) are filtered out —
+        see _is_real_device.
 
         The description is enriched with the per-interface "bus reported"
         name when available (Windows), so the two CDC interfaces of a
@@ -76,6 +99,8 @@ class SerialPort(QObject):
         bus = bus_reported_names()
         out: list[tuple[str, str]] = []
         for info in QSerialPortInfo.availablePorts():
+            if not SerialPort._is_real_device(info):
+                continue
             name = info.portName()
             desc = info.description() or info.manufacturer() or ""
             iface = bus.get(name, "")
