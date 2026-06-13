@@ -105,7 +105,11 @@ def game(qtbot):
     w = g.create_widget()
     qtbot.addWidget(w)
     g.start(GameMode.SINGLE, {0: "P1"})
-    return g
+    yield g
+    # Stop the slide timer before the widget is torn down — otherwise a queued
+    # tick fires into an already-deleted renderer and pollutes a later test.
+    # This mirrors the hub's real teardown (HubPanel stops the game first).
+    g.stop()
 
 
 def test_perfect_drop_scores_bonus_and_grows_streak(game) -> None:

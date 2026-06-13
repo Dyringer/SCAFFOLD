@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from collections.abc import Callable
 from typing import ClassVar
@@ -13,14 +14,25 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from app.core.resource_manager import local_dir
 from app.core.settings_store import settings_store
-from app.subapps.serial_terminal.ansi import AnsiToHtml, _esc_html
+from app.subapps.serial_terminal.ansi import AnsiToHtml, _esc_html, decode_serial
+from app.subapps.serial_terminal.demo_port import (
+    DEMO_PLOT_CONFIG,
+    DEMO_PORT_NAME,
+    DemoSerialPort,
+)
+from app.subapps.serial_terminal.file_port import FILE_PORT_NAME, FileSerialPort
+from app.subapps.serial_terminal.log_panel import LogPanel
+from app.subapps.serial_terminal.plot_view import PlotView
 from app.subapps.serial_terminal.port_io import BAUD_RATES, SerialPort
+from app.subapps.serial_terminal.session_logger import SessionLogger
 
 # Maps the line-ending setting value -> bytes appended to each sent message.
 _LINE_ENDINGS: list[tuple[str, str]] = [
@@ -191,11 +203,20 @@ class TerminalSession(QWidget):
         super().__init__(parent)
 
         self._port = port
-        self._serial = SerialPort(self)
+        # DEMO (synthetic) and FILE (replay a capture) are interface-compatible
+        # stand-ins for SerialPort, so the rest of the session is oblivious to
+        # which one it's driving.
+        self._serial: SerialPort | DemoSerialPort | FileSerialPort = (
+            self._make_source(port)
+        )
         self._serial.data_received.connect(self._on_data_received)
         self._serial.opened.connect(self._on_opened)
         self._serial.closed.connect(self._on_closed)
         self._serial.error.connect(self._on_error)
+
+        # Optional session-to-file capture. Tapped from _record so it sees both
+        # RX and TX; a no-op until the user starts it from the Log button.
+        self._logger = SessionLogger()
 
         # Raw byte history: (direction, bytes) where direction is "rx"/"tx".
         # Source of truth for re-rendering when the view mode toggles.
@@ -243,7 +264,41 @@ class TerminalSession(QWidget):
         rl = QVBoxLayout(self)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(6)
-        rl.addLayout(self._build_toolbar())
+
+        # Console and Plot are two views of the same RX stream. Each tab carries
+        # its own controls — the UART/console toolbar lives inside the Console
+        # tab, the series builder inside the Plot tab — so neither set of
+        # controls hovers over the other view. Plotting and the raw log still
+        # run simultaneously: the plot is fed regardless of which tab is shown.
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._build_console_tab(), "Console")
+        # Default to the demo-matching config so opening DEMO + the Plot tab
+        # graphs immediately; a user's saved config (if any) takes precedence.
+        self._plot = PlotView(config=self._load_plot_config())
+        self._plot.config_changed.connect(
+            lambda j: settings_store.set("serial.plot_config", j)
+        )
+        self._tabs.addTab(self._plot, "Plot")
+        # Log tab owns all file-capture UI; it drives the shared SessionLogger.
+        self._log_panel = LogPanel(self._logger, local_dir() / "logs", self._port)
+        self._log_panel.recording_changed.connect(self._on_recording_changed)
+        self._tabs.addTab(self._log_panel, "Log")
+        rl.addWidget(self._tabs, 1)
+
+        self._apply_history_limit()
+        self._apply_raw_mode(self._raw_chk.isChecked())
+        self._update_io_enabled()
+
+    def _build_console_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        # The UART/console toolbar (baud, line-ending, pause, clear, hex,
+        # auto-reconnect, interactive) belongs to the console view — it's all
+        # connection + display config, none of it relevant to the Plot tab.
+        layout.addLayout(self._build_toolbar())
 
         self._console = _RawConsole(self._on_console_key)
         self._console.setReadOnly(True)
@@ -252,7 +307,7 @@ class TerminalSession(QWidget):
             Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
         )
         self._console.setFont(QFont("Consolas", 9))
-        rl.addWidget(self._console, 1)
+        layout.addWidget(self._console, 1)
 
         self._input_row = QWidget()
         input_row = QHBoxLayout(self._input_row)
@@ -267,11 +322,26 @@ class TerminalSession(QWidget):
         self._send_btn.clicked.connect(self._send_input)
         input_row.addWidget(self._input, 1)
         input_row.addWidget(self._send_btn)
-        rl.addWidget(self._input_row)
+        layout.addWidget(self._input_row)
 
-        self._apply_history_limit()
-        self._apply_raw_mode(self._raw_chk.isChecked())
-        self._update_io_enabled()
+        return tab
+
+    @staticmethod
+    def _load_plot_config() -> dict:
+        """The saved plot config (JSON in settings) or the demo default.
+
+        A corrupt/missing setting falls back to the demo config so the Plot tab
+        is always usable.
+        """
+        raw = settings_store.get("serial.plot_config", "")
+        if raw:
+            try:
+                cfg = json.loads(raw)
+                if isinstance(cfg, dict):
+                    return cfg
+            except (ValueError, TypeError):
+                pass
+        return DEMO_PLOT_CONFIG
 
     # ------------------------------------------------------------------
     # construction
@@ -310,6 +380,12 @@ class TerminalSession(QWidget):
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.clear_console)
         bar.addWidget(clear_btn)
+
+        # Read-only capture indicator — logging is driven from the Log tab, but
+        # a recording session should be visible while watching the console.
+        self._rec_lbl = QLabel("")
+        self._rec_lbl.setToolTip("A session capture is running (see the Log tab).")
+        bar.addWidget(self._rec_lbl)
 
         self._hex_btn = QPushButton("Hex")
         self._hex_btn.setCheckable(True)
@@ -350,6 +426,24 @@ class TerminalSession(QWidget):
     def port_name(self) -> str:
         """The port this session owns (fixed for the session's lifetime)."""
         return self._port
+
+    def _make_source(
+        self, port: str
+    ) -> SerialPort | DemoSerialPort | FileSerialPort:
+        if port == DEMO_PORT_NAME:
+            return DemoSerialPort(self)
+        if port == FILE_PORT_NAME:
+            return FileSerialPort(self)
+        return SerialPort(self)
+
+    def set_source_path(self, path: str) -> None:
+        """Point the FILE source at `path` before connect(), and clear any
+        previously-loaded data so the new file starts fresh. No-op for other
+        source types (the UI only calls this for the FILE port)."""
+        if isinstance(self._serial, FileSerialPort):
+            self._serial.set_path(path)
+            self.clear_console()
+            self._plot.clear()
 
     def connect(self) -> None:
         """Open this session's port at its current baud."""
@@ -405,6 +499,18 @@ class TerminalSession(QWidget):
         settings_store.set("serial.auto_reconnect", on)
         if not on:
             self._reconnect_timer.stop()
+
+    # ------------------------------------------------------------------
+    # session logging (driven by the Log tab; console shows only an indicator)
+
+    def _on_recording_changed(self, recording: bool) -> None:
+        self._rec_lbl.setText("● REC" if recording else "")
+        self._rec_lbl.setStyleSheet("color: #c0392b; font-weight: bold;" if recording else "")
+        path = self._logger.path
+        if recording and path is not None:
+            self._append_system(f"— logging to {path} ({self._logger.mode.value}) —")
+        elif not recording:
+            self._append_system("— logging stopped —")
 
     def _on_error(self, msg: str) -> None:
         self._append_system(f"⚠ {msg}")
@@ -551,6 +657,9 @@ class TerminalSession(QWidget):
     def _on_data_received(self, data: bytes) -> None:
         self._feed_rx_watchdog()
         self._record("rx", data)
+        # Same bytes, second lens: the plot taps the RX stream too. It's a
+        # no-op until a regex is set, so there's no cost when not plotting.
+        self._plot.feed(data)
 
     def _record(self, direction: str, data: bytes) -> None:
         """Add bytes to the ring buffer and queue them for the next flush.
@@ -559,6 +668,9 @@ class TerminalSession(QWidget):
         flood can't starve the GUI thread (see _FLUSH_INTERVAL). _buffer is the
         re-render source of truth; _pending is just this frame's new chunks.
         """
+        # File capture sees the unfiltered stream (both directions), regardless
+        # of pause/view mode — pausing freezes the console, not the recording.
+        self._logger.write(direction, data)
         self._buffer.append((direction, data))
         if self._paused:
             return
@@ -585,7 +697,7 @@ class TerminalSession(QWidget):
         self._pending.clear()
 
     def _text_html(self, direction: str, data: bytes) -> str:
-        text = data.decode("utf-8", errors="replace")
+        text = decode_serial(data)
         if direction == "tx":
             # Sent text is shown verbatim in a distinct color (no ANSI parse).
             body = _esc_html(text).replace("\n", "<br>")
@@ -718,4 +830,7 @@ class TerminalSession(QWidget):
     def close_port(self) -> None:
         self._reconnect_timer.stop()
         self._flush_timer.stop()
+        self._plot.stop()
+        self._log_panel.stop()
+        self._logger.stop()
         self._serial.close("shutdown")

@@ -43,6 +43,14 @@ def _esc_html(text: str) -> str:
     )
 
 
+def decode_serial(data: bytes) -> str:
+    """Decode device bytes to text leniently — a corrupt byte becomes the
+    Unicode replacement char rather than raising. Serial output is noisy
+    (garbage, partial multibyte sequences), so every consumer of the RX/TX
+    stream decodes this way; centralised here so they agree."""
+    return data.decode("utf-8", errors="replace")
+
+
 class AnsiToHtml:
     """Incremental ANSI-SGR → HTML converter.
 

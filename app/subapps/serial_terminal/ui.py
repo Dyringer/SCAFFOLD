@@ -4,6 +4,7 @@ import contextlib
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -15,7 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.resource_manager import local_dir
 from app.core.settings_store import settings_store
+from app.subapps.serial_terminal.file_port import FILE_PORT_NAME
 from app.subapps.serial_terminal.port_io import SerialPort
 from app.subapps.serial_terminal.session import TerminalSession
 
@@ -110,8 +113,18 @@ class SerialTerminalPanel(QWidget):
         w = self._stack.currentWidget()
         return w if isinstance(w, TerminalSession) else None
 
-    def _open_session(self, port: str) -> TerminalSession:
-        """Create (or reuse) a session for `port`, show and connect it."""
+    def _open_session(self, port: str) -> TerminalSession | None:
+        """Create (or reuse) a session for `port`, show and connect it.
+
+        For the FILE source, a file picker opens first (Connect/double-click on
+        FILE means "load a file"); the chosen path is handed to the session
+        before it connects. Cancelling the dialog aborts without a session.
+        """
+        # FILE means "load a file": pick it up front; cancelling aborts.
+        file_path = self._pick_replay_file() if port == FILE_PORT_NAME else None
+        if port == FILE_PORT_NAME and not file_path:
+            return None
+
         session = self._sessions.get(port)
         if session is None:
             session = TerminalSession(port)
@@ -120,11 +133,28 @@ class SerialTerminalPanel(QWidget):
             self._sessions[port] = session
             self._stack.addWidget(session)
         self._stack.setCurrentWidget(session)
-        if not session.is_open:
+        if file_path:
+            # Reload the (possibly different) file on each activation. open()
+            # re-reads from scratch, so no need to disconnect a prior load first.
+            session.set_source_path(file_path)
+            session.connect()
+        elif not session.is_open:
             session.connect()
         self._refresh_ports()
         self._update_buttons()
         return session
+
+    def _pick_replay_file(self) -> str | None:
+        """Ask for a capture file to replay. Returns the path, or None if
+        cancelled. Defaults to the logs folder and our capture formats."""
+        start_dir = local_dir() / "logs"
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open capture to replay",
+            str(start_dir if start_dir.exists() else local_dir()),
+            "Captures (*.log.bin *.log);;All files (*)",
+        )
+        return path or None
 
     def _on_session_status(self, text: str) -> None:
         if self.sender() is self._active_session():

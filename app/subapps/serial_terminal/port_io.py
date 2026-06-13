@@ -95,9 +95,25 @@ class SerialPort(QObject):
         composite device that share one product name can be told apart —
         e.g. "PICO_CORE - Console" vs "PICO_CORE - DCP". Qt doesn't expose
         this; see win_ports.bus_reported_names().
+
+        The synthetic "DEMO" source and the "FILE" replay source are always
+        listed first so serial features can be exercised with no hardware (see
+        demo_port.DemoSerialPort and file_port.FileSerialPort).
         """
+        from app.subapps.serial_terminal.demo_port import (
+            DEMO_PORT_DESC,
+            DEMO_PORT_NAME,
+        )
+        from app.subapps.serial_terminal.file_port import (
+            FILE_PORT_DESC,
+            FILE_PORT_NAME,
+        )
+
+        out: list[tuple[str, str]] = [
+            (DEMO_PORT_NAME, DEMO_PORT_DESC),
+            (FILE_PORT_NAME, FILE_PORT_DESC),
+        ]
         bus = bus_reported_names()
-        out: list[tuple[str, str]] = []
         for info in QSerialPortInfo.availablePorts():
             if not SerialPort._is_real_device(info):
                 continue
