@@ -10,6 +10,7 @@ from .models import _LIST_RE
 class MarkdownEditor(QPlainTextEdit):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("SpEditor")
         font = QFont("Consolas")
         font.setStyleHint(QFont.Monospace)
         font.setPointSize(11)
@@ -19,7 +20,7 @@ class MarkdownEditor(QPlainTextEdit):
         self.setUndoRedoEnabled(True)
         self.setAcceptDrops(True)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 (Qt override)
         if (
             event.key() in (Qt.Key_Return, Qt.Key_Enter)
             and not event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)

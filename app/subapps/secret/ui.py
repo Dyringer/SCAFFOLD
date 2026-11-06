@@ -1,13 +1,28 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
+
+from app.ui.widgets import Card, mark_modern
 
 
 class SecretPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Secret")
+        mark_modern(self)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setAlignment(Qt.AlignCenter)
-        lbl = QLabel("🎉  You found the secret!\n\nYou are one of the few.")
-        lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet("font-size: 28px; font-weight: 300;")
-        layout.addWidget(lbl)
+
+        card = Card()
+        card.setFixedWidth(420)
+        card.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        for text, name in (
+            ("🎉", "EmptyIcon"),
+            ("You found the secret!", "EmptyTitle"),
+            ("You are one of the few.", "Hint"),
+        ):
+            lbl = QLabel(text)
+            lbl.setObjectName(name)
+            lbl.setAlignment(Qt.AlignCenter)
+            card.body.addWidget(lbl)
+        layout.addWidget(card)

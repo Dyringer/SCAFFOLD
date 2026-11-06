@@ -3,11 +3,19 @@ import random
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 from app.core.notification_bus import notification_bus
+from app.ui.widgets import Card, field_label, mark_modern
 
 _logger = logging.getLogger("dummy.test")
 
@@ -26,44 +34,44 @@ _LOG_SAMPLES = [
 
 def _section(title: str) -> tuple[QWidget, QVBoxLayout]:
     """Returns a card widget and its content layout."""
-    card = QFrame()
-    card.setObjectName("TestCard")
+    card = Card(title)
     card.setFixedWidth(480)
-    vl = QVBoxLayout(card)
-    vl.setContentsMargins(16, 12, 16, 14)
-    vl.setSpacing(10)
+    card.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+    return card, card.body
 
-    heading = QLabel(title)
-    heading.setObjectName("TestCardTitle")
-    vl.addWidget(heading)
 
-    sep = QFrame()
-    sep.setFrameShape(QFrame.HLine)
-    sep.setObjectName("TestCardSep")
-    vl.addWidget(sep)
-
-    return card, vl
+def _row() -> tuple[QWidget, QHBoxLayout]:
+    row = QWidget()
+    row.setObjectName("Plain")
+    hl = QHBoxLayout(row)
+    hl.setContentsMargins(0, 0, 0, 0)
+    hl.setSpacing(8)
+    return row, hl
 
 
 class TestSuitePanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("TestSuite")
+        mark_modern(self)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(0)
 
         scroll = QScrollArea()
+        scroll.setObjectName("Scroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         root.addWidget(scroll)
 
         inner = QWidget()
+        inner.setObjectName("Plain")
         scroll.setWidget(inner)
         layout = QVBoxLayout(inner)
         layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
         # ── Toasts ────────────────────────────────────────────
         toast_card, tl = _section("Toast notifications")
@@ -72,17 +80,18 @@ class TestSuitePanel(QWidget):
         self._msg_input.setPlaceholderText("Message text (leave blank for default)")
         tl.addWidget(self._msg_input)
 
-        toast_row = QWidget()
-        trl = QHBoxLayout(toast_row)
-        trl.setContentsMargins(0, 0, 0, 0)
-        trl.setSpacing(8)
+        toast_row, trl = _row()
 
         self._level_combo = QComboBox()
         self._level_combo.addItems(["info", "warning", "error"])
-        self._level_combo.setFixedWidth(110)
+        self._level_combo.setFixedWidth(120)
         trl.addWidget(self._level_combo)
+        trl.addStretch()
 
         send_btn = QPushButton("Send toast")
+        send_btn.setObjectName("PrimaryBtn")
+        send_btn.setProperty("compact", True)
+        send_btn.setCursor(Qt.PointingHandCursor)
         send_btn.clicked.connect(self._send_toast)
         trl.addWidget(send_btn)
 
@@ -92,21 +101,19 @@ class TestSuitePanel(QWidget):
         # ── Logs ──────────────────────────────────────────────
         log_card, ll = _section("Log entries")
 
-        log_row = QWidget()
-        lrl = QHBoxLayout(log_row)
-        lrl.setContentsMargins(0, 0, 0, 0)
-        lrl.setSpacing(8)
+        log_row, lrl = _row()
 
-        lrl.addWidget(QLabel("Count:"))
+        lrl.addWidget(field_label("COUNT"))
 
         self._log_count = QComboBox()
         self._log_count.addItems(["1", "5", "10", "25"])
-        self._log_count.setFixedWidth(70)
+        self._log_count.setFixedWidth(80)
         lrl.addWidget(self._log_count)
 
         lrl.addStretch()
 
         log_btn = QPushButton("Generate random logs")
+        log_btn.setCursor(Qt.PointingHandCursor)
         log_btn.clicked.connect(self._generate_logs)
         lrl.addWidget(log_btn)
 

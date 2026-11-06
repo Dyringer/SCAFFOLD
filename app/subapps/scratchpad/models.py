@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-
+from functools import lru_cache
 
 _LIST_RE = re.compile(
     r"^(?P<indent>\s*)"
@@ -19,8 +19,12 @@ _LIST_RE = re.compile(
 _TAG_RE = re.compile(r"(?<![\w/&])#([A-Za-z][\w\-]*)")
 
 
-def extract_tags(body: str) -> set[str]:
-    """Return lowercased tags found outside of fenced code blocks and URLs."""
+@lru_cache(maxsize=512)
+def extract_tags(body: str) -> frozenset[str]:
+    """Return lowercased tags found outside of fenced code blocks and URLs.
+
+    Cached by body: a list refresh asks for every note's tags several times
+    (row text, tag filter, tag-bar counts)."""
     tags: set[str] = set()
     in_fence = False
     for line in body.splitlines():
@@ -32,7 +36,7 @@ def extract_tags(body: str) -> set[str]:
         stripped = re.sub(r"https?://\S+", "", line)
         for m in _TAG_RE.finditer(stripped):
             tags.add(m.group(1).lower())
-    return tags
+    return frozenset(tags)
 
 
 def format_modified(ts: float) -> str:

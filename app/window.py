@@ -165,8 +165,20 @@ class MainWindow(QWidget):
         pos = settings_store.get("window.pos")
         if geo:
             self.resize(geo[0], geo[1])
-        if pos:
+        # Skip a position that's no longer on any screen (e.g. saved on a
+        # monitor that has since been unplugged) — the window would open
+        # invisible. Qt's default placement is used instead.
+        if pos and self._on_some_screen(QRect(pos[0], pos[1], self.width(), 40)):
             self.move(pos[0], pos[1])
+
+    @staticmethod
+    def _on_some_screen(title_bar: QRect) -> bool:
+        """True if enough of `title_bar` is visible to grab and drag it."""
+        for screen in QApplication.screens():
+            visible = screen.availableGeometry().intersected(title_bar)
+            if visible.width() >= 100 and visible.height() >= 20:
+                return True
+        return False
 
     def _save_geometry(self) -> None:
         update: dict = {

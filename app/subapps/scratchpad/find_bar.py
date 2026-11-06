@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLineEdit, QPushButton, QWidget,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QWidget,
 )
 
 
@@ -12,9 +16,10 @@ class FindBar(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Plain")
         self.setFrameShape(QFrame.NoFrame)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
         self._input = QLineEdit()
@@ -23,11 +28,14 @@ class FindBar(QFrame):
         layout.addWidget(self._input, 1)
 
         btn = QPushButton("Find")
+        btn.setCursor(Qt.PointingHandCursor)
         btn.clicked.connect(self._fire)
         layout.addWidget(btn)
 
         close = QPushButton("✕")
-        close.setFixedWidth(28)
+        close.setObjectName("IconBtn")
+        close.setToolTip("Close")
+        close.setCursor(Qt.PointingHandCursor)
         close.clicked.connect(self.closed)
         layout.addWidget(close)
 

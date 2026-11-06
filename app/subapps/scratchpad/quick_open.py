@@ -3,9 +3,17 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QVBoxLayout, QWidget,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
+
+from app.ui.widgets import Card, mark_modern
 
 from .models import format_modified
 from .store import Note
@@ -42,10 +50,17 @@ class QuickOpen(QDialog):
 
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
         self.setMinimumWidth(460)
+        # A top-level popup sits outside the panel's modern="true" scope, so it
+        # opts in itself; the rounded Card is drawn on a transparent window.
+        self.setObjectName("SpPopup")
+        mark_modern(self)
+        self.setAttribute(Qt.WA_TranslucentBackground)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        card = Card(margins=(10, 10, 10, 10))
+        outer.addWidget(card)
+        layout = card.body
 
         self._input = QLineEdit()
         self._input.setPlaceholderText("Go to note…")
@@ -53,7 +68,9 @@ class QuickOpen(QDialog):
         layout.addWidget(self._input)
 
         self._list = QListWidget()
+        self._list.setObjectName("PortList")
         self._list.setFrameShape(QListWidget.NoFrame)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._list.itemActivated.connect(self._on_activate)
         layout.addWidget(self._list)
 
@@ -82,14 +99,16 @@ class QuickOpen(QDialog):
             self._list.addItem(item)
 
             row = QWidget()
+            row.setObjectName("PortItem")
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(6, 3, 6, 3)
+            row_layout.setContentsMargins(10, 6, 10, 6)
 
             title = QLabel(note.title or "Untitled")
+            title.setObjectName("SpRowText")
             row_layout.addWidget(title, 1)
 
             meta = QLabel(format_modified(note.modified))
-            meta.setStyleSheet("color: palette(mid); font-size: 9pt;")
+            meta.setObjectName("SpRowMeta")
             row_layout.addWidget(meta)
 
             item.setSizeHint(row.sizeHint())
@@ -105,7 +124,7 @@ class QuickOpen(QDialog):
         self.selected_id = item.data(Qt.UserRole)
         self.accept()
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 (Qt override)
         key = event.key()
         if key == Qt.Key_Escape:
             self.reject()

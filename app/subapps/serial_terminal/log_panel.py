@@ -10,12 +10,13 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl, Signal
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.subapps.serial_terminal.session_logger import LogMode, SessionLogger
+from app.ui.widgets import Card, field_label, set_state
 
 # How often (ms) the live stats (file size, bytes, lines, elapsed) refresh.
 _STATS_MS = 1000
@@ -62,12 +64,16 @@ class LogPanel(QWidget):
         self._start_monotonic: float | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
 
-        # --- Mode + file selection ---------------------------------------
+        # --- Capture card: mode + file + start/stop ------------------------
+        capture = Card("Capture")
+        root.addWidget(capture)
         controls = QFormLayout()
-        controls.setSpacing(6)
+        controls.setHorizontalSpacing(12)
+        controls.setVerticalSpacing(8)
+        controls.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self._mode_combo = QComboBox()
         self._mode_combo.addItem("Raw RX (replayable, *.log.bin)", LogMode.RAW)
@@ -76,7 +82,7 @@ class LogPanel(QWidget):
             "Raw: verbatim received bytes — byte-faithful, can be re-loaded into "
             "the plotter. Transcript: human-readable RX+TX text record."
         )
-        controls.addRow("Mode:", self._mode_combo)
+        controls.addRow(field_label("MODE"), self._mode_combo)
 
         file_row = QHBoxLayout()
         file_row.setSpacing(6)
@@ -87,24 +93,30 @@ class LogPanel(QWidget):
         self._browse_btn = QPushButton("Browse…")
         self._browse_btn.clicked.connect(self._on_browse)
         file_row.addWidget(self._browse_btn)
-        controls.addRow("File:", file_row)
-        root.addLayout(controls)
+        controls.addRow(field_label("FILE"), file_row)
+        capture.body.addLayout(controls)
 
-        # --- Start / Stop / Open folder ----------------------------------
         btns = QHBoxLayout()
         btns.setSpacing(6)
         self._start_btn = QPushButton("Start logging")
+        self._start_btn.setObjectName("PrimaryBtn")
+        self._start_btn.setProperty("compact", True)
         self._start_btn.clicked.connect(self._on_start_stop)
         btns.addWidget(self._start_btn)
         self._open_btn = QPushButton("Open folder")
         self._open_btn.clicked.connect(self._on_open_folder)
         btns.addWidget(self._open_btn)
         btns.addStretch(1)
-        root.addLayout(btns)
+        capture.body.addLayout(btns)
+        for b in (self._browse_btn, self._start_btn, self._open_btn):
+            b.setCursor(Qt.PointingHandCursor)
 
-        # --- Live info ----------------------------------------------------
-        info = QFormLayout()
-        info.setSpacing(4)
+        # --- Session card: live stats as tiles ----------------------------
+        stats = Card("Session")
+        root.addWidget(stats)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(14)
         self._status_lbl = QLabel("Idle")
         self._mode_lbl = QLabel("—")
         self._started_lbl = QLabel("—")
@@ -112,14 +124,22 @@ class LogPanel(QWidget):
         self._bytes_lbl = QLabel("—")
         self._lines_lbl = QLabel("—")
         self._elapsed_lbl = QLabel("—")
-        info.addRow("Status:", self._status_lbl)
-        info.addRow("Mode:", self._mode_lbl)
-        info.addRow("Started:", self._started_lbl)
-        info.addRow("File size:", self._size_lbl)
-        info.addRow("Bytes written:", self._bytes_lbl)
-        info.addRow("Lines (transcript):", self._lines_lbl)
-        info.addRow("Elapsed:", self._elapsed_lbl)
-        root.addLayout(info)
+        tiles = [
+            ("STATUS", self._status_lbl), ("MODE", self._mode_lbl),
+            ("STARTED", self._started_lbl), ("ELAPSED", self._elapsed_lbl),
+            ("FILE SIZE", self._size_lbl), ("BYTES WRITTEN", self._bytes_lbl),
+            ("LINES (TRANSCRIPT)", self._lines_lbl),
+        ]
+        for i, (title, value) in enumerate(tiles):
+            value.setObjectName("StatValue")
+            tile = QVBoxLayout()
+            tile.setSpacing(2)
+            tile.addWidget(field_label(title))
+            tile.addWidget(value)
+            grid.addLayout(tile, i // 4, i % 4)
+        for col in range(4):
+            grid.setColumnStretch(col, 1)
+        stats.body.addLayout(grid)
         root.addStretch(1)
 
         # Live-stats poll: only does work while recording.
@@ -198,7 +218,9 @@ class LogPanel(QWidget):
     def _update_controls(self) -> None:
         recording = self._logger.is_logging
         self._status_lbl.setText("● Recording" if recording else "Idle")
+        set_state(self._status_lbl, "rec" if recording else "")
         self._start_btn.setText("Stop logging" if recording else "Start logging")
+        set_state(self._start_btn, "danger" if recording else "")
         # Can only start once a path is chosen; mode/file locked while recording.
         self._start_btn.setEnabled(recording or self._chosen_path is not None)
         self._mode_combo.setEnabled(not recording)

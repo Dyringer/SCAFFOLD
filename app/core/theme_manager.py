@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QApplication
 
 from app.core.resource_manager import resource_path
 from app.core.settings_store import settings_store
@@ -19,6 +19,10 @@ class ThemeManager(QObject):
     def apply(self, theme: str) -> None:
         qss_file = resource_path(f"themes/{theme}.qss")
         qss = qss_file.read_text(encoding="utf-8") if qss_file.exists() else ""
+        # QSS url() paths resolve against the CWD, so themes reference their
+        # assets as url(@THEMES@/icons/...) and we pin it to the real folder
+        # (repo or frozen bundle).
+        qss = qss.replace("@THEMES@", resource_path("themes").as_posix())
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(qss)

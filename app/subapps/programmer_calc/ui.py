@@ -1,22 +1,25 @@
+# ruff: noqa: RUF001, RUF003 -- keypad labels use real math glyphs (−, ×) on purpose
 from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QFont, QGuiApplication, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
+
+from app.ui.widgets import Card, ElidedLabel, field_label, mark_modern, set_state
 
 # ---------------------------------------------------------------------------
 # Evaluation helpers
@@ -36,7 +39,7 @@ def _evaluate(expr: str) -> int:
     if _BANNED.search(expr):
         raise ValueError("disallowed token")
     try:
-        result = eval(expr, _SAFE_NAMES_FULL)  # noqa: S307
+        result = eval(expr, _SAFE_NAMES_FULL)  # restricted globals; see _BANNED
     except Exception as exc:
         raise ValueError(str(exc)) from exc
     if not isinstance(result, int):
@@ -62,6 +65,11 @@ def _fmt_dec(value: int) -> str:
 # ---------------------------------------------------------------------------
 # CalcButton
 # ---------------------------------------------------------------------------
+#
+# Keys are neutral surfaces; only the category's *text* colour differs, and
+# only within the minimal palette (see the "Programmer Calculator" QSS
+# section): operators accent, prefixes/parens muted, CLR/← error, and "=" is
+# the filled primary button.
 
 _CAT_DIGIT   = "digit"
 _CAT_HEX     = "hex"
@@ -71,15 +79,15 @@ _CAT_PREFIX  = "prefix"
 _CAT_ACTION  = "action"
 _CAT_PAREN   = "paren"
 
-# Each entry: (light-bg, light-fg, dark-bg, dark-fg)
-_CAT_COLORS: dict[str, tuple[str, str, str, str]] = {
-    _CAT_DIGIT:   ("#e8e8e8", "#111111", "#2a2a2a", "#e0e0e0"),
-    _CAT_HEX:     ("#cce0ff", "#004080", "#1a3a5c", "#4a9eff"),
-    _CAT_OP:      ("#ffe8c0", "#7a4000", "#2d1a00", "#e8a020"),
-    _CAT_BITWISE: ("#d4f0c0", "#2a5a00", "#1a2d00", "#78c832"),
-    _CAT_PREFIX:  ("#f0d0f0", "#6a006a", "#2d002d", "#c864c8"),
-    _CAT_ACTION:  ("#ffd0d0", "#800000", "#3a0000", "#e05050"),
-    _CAT_PAREN:   ("#ddddf8", "#333388", "#1a1a2d", "#8888cc"),
+# category -> QSS `kind` of #CalcKey
+_CAT_KIND: dict[str, str] = {
+    _CAT_DIGIT:   "",
+    _CAT_HEX:     "",
+    _CAT_OP:      "op",
+    _CAT_BITWISE: "op",
+    _CAT_PREFIX:  "muted",
+    _CAT_PAREN:   "muted",
+    _CAT_ACTION:  "danger",
 }
 
 
@@ -93,21 +101,15 @@ class CalcButton(QPushButton):
     ) -> None:
         super().__init__(label.replace("&", "&&"), parent)
         self._insert = insert
-        self.setFixedHeight(44)
+        self.setFixedHeight(46)
         self.setMinimumWidth(44)
-        self.setFont(QFont("Consolas", 13))
         self.setCursor(Qt.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        colors = _CAT_COLORS.get(category, ("#e0e0e0", "#111", "#2a2a2a", "#eee"))
-        is_dark = QApplication.palette().color(QPalette.Window).lightness() < 128
-        bg, fg = (colors[2], colors[3]) if is_dark else (colors[0], colors[1])
-        self.setStyleSheet(
-            f"QPushButton {{ border-radius: 6px; padding: 4px 2px;"
-            f" background-color: {bg}; color: {fg}; }}"
-            f"QPushButton:hover {{ background-color: {bg}dd; }}"
-            f"QPushButton:pressed {{ background-color: {bg}99; }}"
-        )
+        if insert == "__EVAL__":
+            self.setObjectName("PrimaryBtn")
+        else:
+            self.setObjectName("CalcKey")
+            self.setProperty("kind", _CAT_KIND.get(category, ""))
 
     @property
     def insert_text(self) -> str:
@@ -122,22 +124,20 @@ class CalcButton(QPushButton):
 class ResultRow(QWidget):
     def __init__(self, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Plain")
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 3, 0, 3)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(12)
 
-        lbl = QLabel(label)
-        lbl.setFixedWidth(36)
-        lbl.setFont(QFont("Consolas", 11))
-        lbl.setStyleSheet("font-weight: 700; color: #888;")
+        lbl = field_label(label)
+        lbl.setFixedWidth(34)
 
         self._value = QLabel("—")
-        self._value.setFont(QFont("Consolas", 14))
+        self._value.setObjectName("CalcValue")
         self._value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._value.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._copy_btn = QPushButton("Copy")
-        self._copy_btn.setFixedWidth(54)
         self._copy_btn.setEnabled(False)
         self._copy_btn.clicked.connect(self._copy)
         self._copy_btn.setCursor(Qt.PointingHandCursor)
@@ -168,25 +168,35 @@ class ResultRow(QWidget):
 
 
 class HistoryEntry(QWidget):
+    """Two-line history row (expression / = result) for the history list."""
+
     clicked = Signal(str)
 
     def __init__(self, expr: str, result: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 2, 6, 2)
+        self.setObjectName("PortItem")      # kit list-row: transparent, padded
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(1)
 
-        text = f"{expr}  =  {result}"
-        lbl = QLabel(text)
-        lbl.setFont(QFont("Consolas", 12))
-        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        layout.addWidget(lbl)
+        expr_lbl = ElidedLabel(expr, Qt.ElideRight)
+        expr_lbl.setObjectName("CalcHistExpr")
+        result_lbl = ElidedLabel(f"= {result}   ·   {_fmt_hex(result)}", Qt.ElideRight)
+        result_lbl.setObjectName("CalcHistResult")
+        layout.addWidget(expr_lbl)
+        layout.addWidget(result_lbl)
 
         self._expr = expr
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip("Click to restore expression")
 
-    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+    @property
+    def expr(self) -> str:
+        return self._expr
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
         self.clicked.emit(self._expr)
+        super().mousePressEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -266,8 +276,9 @@ class Keypad(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Plain")
         grid = QGridLayout(self)
-        grid.setSpacing(5)
+        grid.setSpacing(6)
         grid.setContentsMargins(0, 0, 0, 0)
 
         for row, col, rs, cs, label, insert, cat in _KEYPAD:
@@ -292,66 +303,20 @@ class CalcPanel(QWidget):
 
     def __init__(self, history: list[dict], parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(10)
+        self.setObjectName("ProgrammerCalc")
+        mark_modern(self)
 
-        # -- expression input --
-        self._input = QLineEdit()
-        self._input.setPlaceholderText("e.g.  10 + 0x42 + 0b1101")
-        self._input.setFont(QFont("Consolas", 16))
-        self._input.setFixedHeight(44)
-        self._input.setStyleSheet("padding: 6px 10px;")
-        root.addWidget(self._input)
-
-        # -- error label --
-        self._error_lbl = QLabel("")
-        self._error_lbl.setStyleSheet("color: #c0392b; font-size: 12px; padding: 0 4px;")
-        self._error_lbl.setVisible(False)
-        root.addWidget(self._error_lbl)
-
-        # -- result rows --
-        result_frame = QFrame()
-        result_frame.setFrameShape(QFrame.StyledPanel)
-        rf = QVBoxLayout(result_frame)
-        rf.setContentsMargins(10, 6, 10, 6)
-        rf.setSpacing(2)
-        self._dec_row = ResultRow("DEC")
-        self._hex_row = ResultRow("HEX")
-        self._bin_row = ResultRow("BIN")
-        for row in (self._dec_row, self._hex_row, self._bin_row):
-            rf.addWidget(row)
-        root.addWidget(result_frame)
-
-        # -- history (above keypad, grows with window height) --
-        hist_header = QHBoxLayout()
-        hist_lbl = QLabel("History")
-        hist_lbl.setStyleSheet("font-weight: 700; font-size: 13px;")
-        clr_hist_btn = QPushButton("Clear")
-        clr_hist_btn.setFixedWidth(54)
-        clr_hist_btn.clicked.connect(self._on_clear_history)
-        clr_hist_btn.setCursor(Qt.PointingHandCursor)
-        hist_header.addWidget(hist_lbl)
-        hist_header.addStretch()
-        hist_header.addWidget(clr_hist_btn)
-        root.addLayout(hist_header)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        self._hist_container = QWidget()
-        self._hist_layout = QVBoxLayout(self._hist_container)
-        self._hist_layout.setAlignment(Qt.AlignTop)
-        self._hist_layout.setContentsMargins(0, 0, 0, 0)
-        self._hist_layout.setSpacing(1)
-        scroll.setWidget(self._hist_container)
-        scroll.setMinimumHeight(60)
-        root.addWidget(scroll, stretch=1)  # takes all extra vertical space
-
-        # -- keypad (fixed height, below history) --
-        self._keypad = Keypad()
-        self._keypad.key_pressed.connect(self._on_key)
-        root.addWidget(self._keypad)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(0)
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(12)
+        splitter.addWidget(self._build_main())
+        splitter.addWidget(self._build_history())
+        splitter.setStretchFactor(0, 6)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([760, 300])
+        outer.addWidget(splitter, 1)
 
         # -- debounce --
         self._timer = QTimer(self)
@@ -366,7 +331,68 @@ class CalcPanel(QWidget):
         for entry in history:
             self._prepend_history_entry(entry["expr"], entry["result"])
 
+        self._update_history_hint()
         self._input.setFocus()
+
+    # ------------------------------------------------------------------
+    # construction
+
+    def _build_main(self) -> QWidget:
+        col = QWidget()
+        col.setObjectName("Plain")
+        lay = QVBoxLayout(col)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(12)
+
+        expr_card = Card("Expression")
+        self._input = QLineEdit()
+        self._input.setObjectName("CalcInput")
+        self._input.setPlaceholderText("e.g.  10 + 0x42 + 0b1101")
+        expr_card.body.addWidget(self._input)
+
+        self._error_lbl = QLabel("")
+        self._error_lbl.setObjectName("StatusText")
+        set_state(self._error_lbl, "error")
+        self._error_lbl.setVisible(False)
+        expr_card.body.addWidget(self._error_lbl)
+
+        self._dec_row = ResultRow("DEC")
+        self._hex_row = ResultRow("HEX")
+        self._bin_row = ResultRow("BIN")
+        for row in (self._dec_row, self._hex_row, self._bin_row):
+            expr_card.body.addWidget(row)
+        lay.addWidget(expr_card)
+
+        keypad_card = Card("Keypad")
+        self._keypad = Keypad()
+        self._keypad.key_pressed.connect(self._on_key)
+        keypad_card.body.addWidget(self._keypad)
+        lay.addWidget(keypad_card)
+        lay.addStretch(1)
+        return col
+
+    def _build_history(self) -> QWidget:
+        card = Card("History")
+        clr_hist_btn = QPushButton("Clear")
+        clr_hist_btn.clicked.connect(self._on_clear_history)
+        clr_hist_btn.setCursor(Qt.PointingHandCursor)
+        card.header.addWidget(clr_hist_btn)
+
+        self._hist_list = QListWidget()
+        self._hist_list.setObjectName("PortList")
+        self._hist_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        card.body.addWidget(self._hist_list, 1)
+
+        self._hist_hint = QLabel("No calculations yet.\nPress Enter or = to keep a result.")
+        self._hist_hint.setObjectName("Hint")
+        self._hist_hint.setAlignment(Qt.AlignCenter)
+        card.body.addWidget(self._hist_hint, 1)
+        return card
+
+    def _update_history_hint(self) -> None:
+        has = self._hist_list.count() > 0
+        self._hist_list.setVisible(has)
+        self._hist_hint.setVisible(not has)
 
     # ------------------------------------------------------------------
     # public API
@@ -413,17 +439,14 @@ class CalcPanel(QWidget):
             result = _evaluate(expr)
         except ValueError as exc:
             self._clear_results()
-            self._error_lbl.setText(str(exc))
+            self._error_lbl.setText(f"⚠ {exc}")
             self._error_lbl.setVisible(True)
-            self._input.setStyleSheet(
-                "font-family: Consolas; font-size: 16px; padding: 6px 10px;"
-                " border: 1px solid #c0392b;"
-            )
+            set_state(self._input, "error")
             self._last_result = None
             return
 
         self._error_lbl.setVisible(False)
-        self._input.setStyleSheet("font-family: Consolas; font-size: 16px; padding: 6px 10px;")
+        set_state(self._input, "")
         self._last_result = result
         self._dec_row.set_value(_fmt_dec(result))
         self._hex_row.set_value(_fmt_hex(result))
@@ -443,7 +466,11 @@ class CalcPanel(QWidget):
     def _prepend_history_entry(self, expr: str, result: int) -> None:
         entry = HistoryEntry(expr, result)
         entry.clicked.connect(self._on_history_clicked)
-        self._hist_layout.insertWidget(0, entry)
+        item = QListWidgetItem()
+        item.setSizeHint(entry.sizeHint())
+        self._hist_list.insertItem(0, item)
+        self._hist_list.setItemWidget(item, entry)
+        self._update_history_hint()
 
     def _on_history_clicked(self, expr: str) -> None:
         self._input.setText(expr)
@@ -451,8 +478,6 @@ class CalcPanel(QWidget):
         self._input.setFocus()
 
     def _on_clear_history(self) -> None:
-        while self._hist_layout.count():
-            item = self._hist_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
+        self._hist_list.clear()
+        self._update_history_hint()
         self.history_cleared.emit()

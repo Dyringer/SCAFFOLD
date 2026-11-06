@@ -2,23 +2,32 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
-    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
+
+from app.ui.widgets import Card, mark_modern
 
 from .command_palette import CommandPalette
 from .commands import Command, CommandRegistry
-from .quick_open import QuickOpen
 from .find_bar import FindBar
 from .models import extract_tags, smart_title
 from .note_list import NoteListWidget
 from .note_view import NoteView
-from .store import Note, NoteStore
+from .quick_open import QuickOpen
+from .store import NoteStore
 from .tab_bar import TabBar
 from .tag_bar import TagFilterBar
 from .welcome import WELCOME_BODY
@@ -50,76 +59,79 @@ class ScratchpadPanel(QWidget):
         self._save_timer.setInterval(self.AUTOSAVE_MS)
         self._save_timer.timeout.connect(self._flush)
 
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setObjectName("Scratchpad")
+        mark_modern(self)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(0)
 
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(12)
         main_layout.addWidget(splitter)
 
-        # --- Sidebar ---
-        sidebar = QWidget()
-        sb_layout = QVBoxLayout(sidebar)
-        sb_layout.setContentsMargins(0, 0, 0, 0)
-        sb_layout.setSpacing(0)
+        # --- Sidebar: "Notes" card ---
+        sidebar = Card("Notes")
 
-        new_btn = QPushButton("+ New note")
+        new_btn = QPushButton("+  New note")
+        new_btn.setCursor(Qt.PointingHandCursor)
+        new_btn.setToolTip("New note (Ctrl+N)")
         new_btn.clicked.connect(self.new_note)
-        sb_layout.addWidget(new_btn)
+        sidebar.body.addWidget(new_btn)
 
         self._tag_bar = TagFilterBar()
         self._tag_bar.tag_selected.connect(self._on_tag_selected)
-        sb_layout.addWidget(self._tag_bar)
+        sidebar.body.addWidget(self._tag_bar)
 
         self._note_list = NoteListWidget()
         self._note_list.note_selected.connect(self._on_sidebar_single_click)
         self._note_list.note_new_tab.connect(self._open_tab_new)
         self._note_list.action_requested.connect(self._on_list_action)
-        sb_layout.addWidget(self._note_list, 1)
+        sidebar.body.addWidget(self._note_list, 1)
 
         splitter.addWidget(sidebar)
 
-        # --- Main area ---
-        main = QWidget()
-        m_layout = QVBoxLayout(main)
-        m_layout.setContentsMargins(0, 0, 0, 0)
-        m_layout.setSpacing(0)
+        # --- Main area: one card with [tabs … Edit|Preview], find, view, footer ---
+        main = Card(margins=(12, 10, 12, 10))
 
         self._tab_bar = TabBar()
         self._tab_bar.tab_selected.connect(self._on_tab_selected)
         self._tab_bar.tab_closed.connect(self._on_tab_closed)
         self._tab_bar.tab_reordered.connect(self._on_tab_reordered)
-        m_layout.addWidget(self._tab_bar)
 
         self._find_bar = FindBar()
         self._find_bar.find_requested.connect(self._on_find)
         self._find_bar.closed.connect(self._find_bar.hide)
-        m_layout.addWidget(self._find_bar)
 
         self._view = NoteView()
         self._view.body_changed.connect(self._on_body_changed)
-        m_layout.addWidget(self._view, 1)
+
+        top = QHBoxLayout()
+        top.setSpacing(8)
+        top.addWidget(self._tab_bar, 1)
+        top.addWidget(self._view.toggle_bar, 0, Qt.AlignTop)
+        main.body.addLayout(top)
+        main.body.addWidget(self._find_bar)
+        main.body.addWidget(self._view, 1)
 
         footer = QHBoxLayout()
-        footer.setContentsMargins(0, 0, 0, 0)
-        footer.setSpacing(0)
+        footer.setSpacing(8)
 
         self._counts = QLabel("")
-        self._counts.setStyleSheet("color: #888; padding: 4px 8px;")
+        self._counts.setObjectName("Hint")
         footer.addWidget(self._counts, 1)
 
         open_folder_btn = QPushButton("Open notes folder")
-        open_folder_btn.setFlat(True)
-        open_folder_btn.setStyleSheet("color: #888; padding: 2px 8px;")
+        open_folder_btn.setCursor(Qt.PointingHandCursor)
         open_folder_btn.clicked.connect(self._open_notes_folder)
         footer.addWidget(open_folder_btn)
 
-        m_layout.addLayout(footer)
+        main.body.addLayout(footer)
 
         splitter.addWidget(main)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([220, 700])
+        splitter.setSizes([270, 730])
 
         self._refresh_list(select_id=self._store.active_id)
         self._restore_tabs()
@@ -164,22 +176,34 @@ class ScratchpadPanel(QWidget):
     # Commands + shortcuts
 
     def _register_commands(self) -> None:
-        has_note = lambda: self._tab_bar.current_note_id() is not None
-        has_closed = lambda: bool(self._closed_tabs)
+        def has_note() -> bool:
+            return self._tab_bar.current_note_id() is not None
+
+        def has_closed() -> bool:
+            return bool(self._closed_tabs)
+
         cmds = [
-            Command("scratchpad.new_note",       "New note",              self.new_note,                  "Ctrl+N"),
-            Command("scratchpad.close_tab",      "Close tab",             self._close_current_tab,        "Ctrl+W",         has_note),
-            Command("scratchpad.reopen_tab",     "Reopen closed tab",     self._reopen_last_closed_tab,   "Ctrl+Shift+T",   has_closed),
-            Command("scratchpad.delete_note",    "Delete note",           self._delete_current,           None,             has_note),
-            Command("scratchpad.save",           "Save",                  self._flush,                    "Ctrl+S",         has_note),
-            Command("scratchpad.toggle_mode",    "Toggle Edit / Preview", self._view.toggle_mode,         "Ctrl+E",         has_note),
-            Command("scratchpad.find",           "Find in notes",         self._open_find,                "Ctrl+F"),
-            Command("scratchpad.next_tab",       "Next tab",              lambda: self._cycle_tabs(+1),   "Ctrl+Tab"),
-            Command("scratchpad.prev_tab",       "Previous tab",          lambda: self._cycle_tabs(-1),   "Ctrl+Shift+Tab"),
-            Command("scratchpad.duplicate_line", "Duplicate line",        self._duplicate_line,           "Ctrl+D",         has_note),
-            Command("scratchpad.quick_open",     "Go to note…",           self._open_quick_open,          "Ctrl+P"),
-            Command("scratchpad.open_folder",    "Open notes folder",     self._open_notes_folder),
-            Command("scratchpad.palette",        "Open command palette",  self._open_palette,             "Ctrl+Shift+P"),
+            Command("scratchpad.new_note", "New note", self.new_note, "Ctrl+N"),
+            Command("scratchpad.close_tab", "Close tab", self._close_current_tab,
+                    "Ctrl+W", has_note),
+            Command("scratchpad.reopen_tab", "Reopen closed tab", self._reopen_last_closed_tab,
+                    "Ctrl+Shift+T", has_closed),
+            Command("scratchpad.delete_note", "Delete note", self._delete_current,
+                    None, has_note),
+            Command("scratchpad.save", "Save", self._flush, "Ctrl+S", has_note),
+            Command("scratchpad.toggle_mode", "Toggle Edit / Preview", self._view.toggle_mode,
+                    "Ctrl+E", has_note),
+            Command("scratchpad.find", "Find in notes", self._open_find, "Ctrl+F"),
+            Command("scratchpad.next_tab", "Next tab", lambda: self._cycle_tabs(+1),
+                    "Ctrl+Tab"),
+            Command("scratchpad.prev_tab", "Previous tab", lambda: self._cycle_tabs(-1),
+                    "Ctrl+Shift+Tab"),
+            Command("scratchpad.duplicate_line", "Duplicate line", self._duplicate_line,
+                    "Ctrl+D", has_note),
+            Command("scratchpad.quick_open", "Go to note…", self._open_quick_open, "Ctrl+P"),
+            Command("scratchpad.open_folder", "Open notes folder", self._open_notes_folder),
+            Command("scratchpad.palette", "Open command palette", self._open_palette,
+                    "Ctrl+Shift+P"),
         ]
         for cmd in cmds:
             self._registry.register(cmd)

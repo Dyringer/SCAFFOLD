@@ -3,9 +3,17 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QVBoxLayout, QWidget,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
+
+from app.ui.widgets import Card, mark_modern, set_state
 
 from .commands import Command, CommandRegistry
 
@@ -41,10 +49,17 @@ class CommandPalette(QDialog):
 
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
         self.setMinimumWidth(420)
+        # A top-level popup sits outside the panel's modern="true" scope, so it
+        # opts in itself; the rounded Card is drawn on a transparent window.
+        self.setObjectName("SpPopup")
+        mark_modern(self)
+        self.setAttribute(Qt.WA_TranslucentBackground)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        card = Card(margins=(10, 10, 10, 10))
+        outer.addWidget(card)
+        layout = card.body
 
         self._input = QLineEdit()
         self._input.setPlaceholderText("Type a command…")
@@ -52,7 +67,9 @@ class CommandPalette(QDialog):
         layout.addWidget(self._input)
 
         self._list = QListWidget()
+        self._list.setObjectName("PortList")
         self._list.setFrameShape(QListWidget.NoFrame)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._list.itemActivated.connect(self._on_activate)
         layout.addWidget(self._list)
 
@@ -79,17 +96,19 @@ class CommandPalette(QDialog):
             self._list.addItem(item)
 
             row = QWidget()
+            row.setObjectName("PortItem")
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(6, 3, 6, 3)
+            row_layout.setContentsMargins(10, 6, 10, 6)
 
             label = QLabel(cmd.label)
+            label.setObjectName("SpRowText")
             if not available:
-                label.setStyleSheet("color: palette(mid);")
+                set_state(label, "disabled")
             row_layout.addWidget(label, 1)
 
             if cmd.shortcut:
                 sc_label = QLabel(cmd.shortcut)
-                sc_label.setStyleSheet("color: palette(mid); font-size: 9pt;")
+                sc_label.setObjectName("SpRowMeta")
                 row_layout.addWidget(sc_label)
 
             item.setSizeHint(row.sizeHint())
@@ -106,7 +125,7 @@ class CommandPalette(QDialog):
         self.accept()
         self._registry.execute(cmd_id)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 (Qt override)
         key = event.key()
         if key == Qt.Key_Escape:
             self.reject()

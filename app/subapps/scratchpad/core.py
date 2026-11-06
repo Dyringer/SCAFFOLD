@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from app.core.base_subapp import BaseSubApp, CommandDef, SubAppState
@@ -35,10 +34,3 @@ class ScratchpadSubApp(BaseSubApp):
     def on_deactivated(self) -> None:
         if self._panel is not None:
             self._panel.deactivate()  # type: ignore[attr-defined]
-
-    def _call(self, method: str) -> None:
-        if self._panel is None:
-            return
-        fn = getattr(self._panel, method, None)
-        if callable(fn):
-            fn()

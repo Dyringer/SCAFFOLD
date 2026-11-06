@@ -1,47 +1,23 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSize, QTimer, Signal
-from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu,
-    QVBoxLayout, QWidget,
-)
-
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QMenu, QWidget
 
-from .models import format_modified
+from app.ui.widgets import PortItem
+
+from .models import extract_tags, format_modified
 from .store import Note
 
 
-class _NoteItemWidget(QWidget):
-    def __init__(self, note: Note, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(2)
-
-        title_row = QHBoxLayout()
-        title_row.setContentsMargins(0, 0, 0, 0)
-        title_row.setSpacing(4)
-
-        pin = QLabel("📌" if note.pinned else "")
-        pin.setFixedWidth(14)
-        title_row.addWidget(pin)
-
-        self._title = QLabel(note.title or "Untitled")
-        f = self._title.font()
-        f.setBold(True)
-        self._title.setFont(f)
-        self._title.setTextInteractionFlags(Qt.NoTextInteraction)
-        title_row.addWidget(self._title, 1)
-
-        layout.addLayout(title_row)
-
-        self._meta = QLabel(format_modified(note.modified))
-        mf = self._meta.font()
-        mf.setPointSize(max(8, mf.pointSize() - 1))
-        self._meta.setFont(mf)
-        self._meta.setStyleSheet("color: #888;")
-        layout.addWidget(self._meta)
+def _note_item_widget(note: Note) -> PortItem:
+    """Two-line kit row: bold title (+ PINNED badge) over muted date · #tags."""
+    meta = format_modified(note.modified) or "—"
+    tags = " ".join(f"#{t}" for t in sorted(extract_tags(note.body)))
+    if tags:
+        meta = f"{meta}  ·  {tags}"
+    badges = [("PINNED", "")] if note.pinned else []
+    return PortItem(note.title or "Untitled", meta, badges)
 
 
 class NoteListWidget(QListWidget):
@@ -53,6 +29,9 @@ class NoteListWidget(QListWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("PortList")
+        self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setSelectionMode(QListWidget.SingleSelection)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
@@ -70,7 +49,7 @@ class NoteListWidget(QListWidget):
         self.clear()
         for note in notes:
             item = QListWidgetItem()
-            widget = _NoteItemWidget(note)
+            widget = _note_item_widget(note)
             item.setSizeHint(QSize(0, max(40, widget.sizeHint().height())))
             item.setData(Qt.UserRole, note.id)
             item.setData(self._PINNED_ROLE, note.pinned)
@@ -88,7 +67,7 @@ class NoteListWidget(QListWidget):
         item = self.currentItem()
         if item is None or item.data(Qt.UserRole) != note.id:
             return
-        widget = _NoteItemWidget(note)
+        widget = _note_item_widget(note)
         item.setSizeHint(QSize(0, max(40, widget.sizeHint().height())))
         self.setItemWidget(item, widget)
 
@@ -114,13 +93,13 @@ class NoteListWidget(QListWidget):
             self.note_selected.emit(self._pending_single_click_id)
             self._pending_single_click_id = None
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 (Qt override)
         super().keyPressEvent(event)
         # Fire immediately on keyboard navigation — no double-click ambiguity.
         self._click_timer.stop()
         self._fire_single_click()
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt override)
         item = self.itemAt(event.pos())
         if item is not None:
             self._click_timer.stop()
@@ -139,13 +118,14 @@ class NoteListWidget(QListWidget):
         note_id = item.data(Qt.UserRole)
         is_pinned = bool(item.data(self._PINNED_ROLE))
 
+        emit = self.action_requested.emit
         menu = QMenu(self)
         menu.addAction(
             "Unpin" if is_pinned else "Pin to top",
-            lambda nid=note_id, p=is_pinned: self.action_requested.emit("unpin" if p else "pin", nid),
+            lambda nid=note_id, p=is_pinned: emit("unpin" if p else "pin", nid),
         )
-        menu.addAction("Duplicate", lambda nid=note_id: self.action_requested.emit("duplicate", nid))
-        menu.addAction("Rename…", lambda nid=note_id: self.action_requested.emit("rename", nid))
+        menu.addAction("Duplicate", lambda nid=note_id: emit("duplicate", nid))
+        menu.addAction("Rename…", lambda nid=note_id: emit("rename", nid))
         menu.addSeparator()
-        menu.addAction("Delete", lambda nid=note_id: self.action_requested.emit("delete", nid))
+        menu.addAction("Delete", lambda nid=note_id: emit("delete", nid))
         menu.exec(self.viewport().mapToGlobal(pos))

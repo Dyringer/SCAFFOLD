@@ -8,10 +8,8 @@ from typing import ClassVar
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QKeyEvent, QKeySequence, QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QTabWidget,
@@ -33,6 +31,7 @@ from app.subapps.serial_terminal.log_panel import LogPanel
 from app.subapps.serial_terminal.plot_view import PlotView
 from app.subapps.serial_terminal.port_io import BAUD_RATES, SerialPort
 from app.subapps.serial_terminal.session_logger import SessionLogger
+from app.ui.widgets import Card, ToggleSwitch, badge, field_label
 
 # Maps the line-ending setting value -> bytes appended to each sent message.
 _LINE_ENDINGS: list[tuple[str, str]] = [
@@ -290,10 +289,8 @@ class TerminalSession(QWidget):
         self._update_io_enabled()
 
     def _build_console_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        tab = Card(margins=(12, 12, 12, 12))
+        layout = tab.body
 
         # The UART/console toolbar (baud, line-ending, pause, clear, hex,
         # auto-reconnect, interactive) belongs to the console view — it's all
@@ -301,6 +298,7 @@ class TerminalSession(QWidget):
         layout.addLayout(self._build_toolbar())
 
         self._console = _RawConsole(self._on_console_key)
+        self._console.setObjectName("Console")
         self._console.setReadOnly(True)
         self._console.setLineWrapMode(QTextEdit.NoWrap)
         self._console.setTextInteractionFlags(
@@ -310,6 +308,7 @@ class TerminalSession(QWidget):
         layout.addWidget(self._console, 1)
 
         self._input_row = QWidget()
+        self._input_row.setObjectName("Plain")
         input_row = QHBoxLayout(self._input_row)
         input_row.setContentsMargins(0, 0, 0, 0)
         input_row.setSpacing(6)
@@ -319,11 +318,15 @@ class TerminalSession(QWidget):
         )
         self._input.returnPressed.connect(self._send_input)
         self._send_btn = QPushButton("Send")
+        self._send_btn.setObjectName("PrimaryBtn")
+        self._send_btn.setProperty("compact", True)
+        self._send_btn.setCursor(Qt.PointingHandCursor)
         self._send_btn.clicked.connect(self._send_input)
         input_row.addWidget(self._input, 1)
         input_row.addWidget(self._send_btn)
         layout.addWidget(self._input_row)
 
+        layout.addLayout(self._build_switches())
         return tab
 
     @staticmethod
@@ -350,7 +353,7 @@ class TerminalSession(QWidget):
         bar = QHBoxLayout()
         bar.setSpacing(6)
 
-        bar.addWidget(QLabel("Baud:"))
+        bar.addWidget(field_label("BAUD"))
         self._baud_combo = QComboBox()
         for b in BAUD_RATES:
             self._baud_combo.addItem(str(b), b)
@@ -360,7 +363,8 @@ class TerminalSession(QWidget):
         self._baud_combo.currentIndexChanged.connect(self._on_baud_changed)
         bar.addWidget(self._baud_combo)
 
-        bar.addWidget(QLabel("End:"))
+        bar.addSpacing(10)
+        bar.addWidget(field_label("LINE END"))
         self._ending_combo = QComboBox()
         for value, label in _LINE_ENDINGS:
             self._ending_combo.addItem(label, value)
@@ -372,37 +376,49 @@ class TerminalSession(QWidget):
 
         bar.addStretch(1)
 
+        # Read-only capture indicator — logging is driven from the Log tab, but
+        # a recording session should be visible while watching the console.
+        self._rec_lbl = badge("● REC", "rec")
+        self._rec_lbl.setToolTip("A session capture is running (see the Log tab).")
+        self._rec_lbl.hide()
+        bar.addWidget(self._rec_lbl)
+        bar.addSpacing(6)
+
         self._pause_btn = QPushButton("Pause")
         self._pause_btn.setCheckable(True)
+        self._pause_btn.setToolTip("Freeze the console view (data is still received)")
         self._pause_btn.toggled.connect(self._on_pause_toggled)
         bar.addWidget(self._pause_btn)
+
+        self._hex_btn = QPushButton("Hex")
+        self._hex_btn.setCheckable(True)
+        self._hex_btn.setToolTip("Show a hex dump instead of text")
+        self._hex_btn.setChecked(self._view_mode == "hex")
+        self._hex_btn.toggled.connect(self._on_hex_toggled)
+        bar.addWidget(self._hex_btn)
 
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.clear_console)
         bar.addWidget(clear_btn)
 
-        # Read-only capture indicator — logging is driven from the Log tab, but
-        # a recording session should be visible while watching the console.
-        self._rec_lbl = QLabel("")
-        self._rec_lbl.setToolTip("A session capture is running (see the Log tab).")
-        bar.addWidget(self._rec_lbl)
+        for btn in (self._pause_btn, self._hex_btn, clear_btn):
+            btn.setCursor(Qt.PointingHandCursor)
+        return bar
 
-        self._hex_btn = QPushButton("Hex")
-        self._hex_btn.setCheckable(True)
-        self._hex_btn.setChecked(self._view_mode == "hex")
-        self._hex_btn.toggled.connect(self._on_hex_toggled)
-        bar.addWidget(self._hex_btn)
+    def _build_switches(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(20)
 
-        self._auto_chk = QCheckBox("Auto-reconnect")
+        self._auto_chk = ToggleSwitch("Auto-reconnect")
         self._auto_chk.setChecked(bool(settings_store.get("serial.auto_reconnect", False)))
         self._auto_chk.setToolTip(
             "Auto-reconnect: when the device drops (e.g. after reflashing), "
             "keep retrying the same port until it comes back."
         )
         self._auto_chk.toggled.connect(self._on_auto_toggled)
-        bar.addWidget(self._auto_chk)
+        row.addWidget(self._auto_chk)
 
-        self._raw_chk = QCheckBox("Interactive")
+        self._raw_chk = ToggleSwitch("Interactive")
         self._raw_chk.setChecked(bool(settings_store.get("serial.raw_mode", False)))
         self._raw_chk.setToolTip(
             "Interactive (raw) mode: type directly into the console and every "
@@ -411,9 +427,9 @@ class TerminalSession(QWidget):
             "Output is the device's echo (no local echo)."
         )
         self._raw_chk.toggled.connect(self._on_raw_toggled)
-        bar.addWidget(self._raw_chk)
-
-        return bar
+        row.addWidget(self._raw_chk)
+        row.addStretch(1)
+        return row
 
     # ------------------------------------------------------------------
     # connection state
@@ -504,8 +520,7 @@ class TerminalSession(QWidget):
     # session logging (driven by the Log tab; console shows only an indicator)
 
     def _on_recording_changed(self, recording: bool) -> None:
-        self._rec_lbl.setText("● REC" if recording else "")
-        self._rec_lbl.setStyleSheet("color: #c0392b; font-weight: bold;" if recording else "")
+        self._rec_lbl.setVisible(recording)
         path = self._logger.path
         if recording and path is not None:
             self._append_system(f"— logging to {path} ({self._logger.mode.value}) —")

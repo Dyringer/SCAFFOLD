@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
+
+from app.ui.widgets import Card, mark_modern
 
 
 class CounterHeaderWidget(QWidget):
@@ -27,33 +34,33 @@ class CounterPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Counter")
+        mark_modern(self)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setAlignment(Qt.AlignCenter)
 
+        card = Card("Counter")
+        card.setFixedWidth(360)
+        card.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
         self._label = QLabel("0")
+        self._label.setObjectName("Display")
         self._label.setAlignment(Qt.AlignCenter)
-        self._label.setStyleSheet("font-size: 64px; font-weight: 700;")
+        card.body.addWidget(self._label)
 
-        btn_row = QWidget()
-        bl = QHBoxLayout(btn_row)
-        bl.setAlignment(Qt.AlignCenter)
-        bl.setSpacing(24)
-
-        self._dec_btn = QPushButton("−")
-        self._dec_btn.setFixedSize(56, 56)
-        self._dec_btn.setStyleSheet("font-size: 28px; border-radius: 28px;")
+        bl = QHBoxLayout()
+        bl.setSpacing(8)
+        self._dec_btn = QPushButton("−  Decrement")  # noqa: RUF001 (real minus sign)
         self._dec_btn.clicked.connect(self.decrement_clicked)
-
-        self._inc_btn = QPushButton("+")
-        self._inc_btn.setFixedSize(56, 56)
-        self._inc_btn.setStyleSheet("font-size: 28px; border-radius: 28px;")
+        self._inc_btn = QPushButton("+  Increment")
+        self._inc_btn.setObjectName("PrimaryBtn")
+        self._inc_btn.setProperty("compact", True)
         self._inc_btn.clicked.connect(self.increment_clicked)
-
-        bl.addWidget(self._dec_btn)
-        bl.addWidget(self._inc_btn)
-
-        layout.addWidget(self._label)
-        layout.addWidget(btn_row)
+        for b in (self._dec_btn, self._inc_btn):
+            b.setCursor(Qt.PointingHandCursor)
+            bl.addWidget(b, 1)
+        card.body.addLayout(bl)
+        layout.addWidget(card)
 
     def set_count(self, value: int) -> None:
         self._label.setText(str(value))

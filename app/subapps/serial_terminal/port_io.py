@@ -26,6 +26,27 @@ BAUD_RATES: list[int] = [
 _TX_STALL_MS = 3000
 
 
+# USB vendor id -> (badge text, badge kind) shown next to a port in port lists.
+_USB_VENDOR_BADGES: dict[int, tuple[str, str]] = {
+    0x303A: ("ESP USB", "esp"),       # Espressif native USB (JTAG/serial, CDC)
+    0x10C4: ("CP210x", "bridge"),     # Silicon Labs
+    0x1A86: ("CH34x", "bridge"),      # WCH
+    0x0403: ("FTDI", "bridge"),
+    0x2E8A: ("RP2040", "bridge"),     # Raspberry Pi
+}
+
+
+def usb_badges() -> dict[str, tuple[str, str]]:
+    """{port_name: (badge text, kind)} for ports with a known USB vendor."""
+    out: dict[str, tuple[str, str]] = {}
+    for info in QSerialPortInfo.availablePorts():
+        if info.hasVendorIdentifier():
+            known = _USB_VENDOR_BADGES.get(info.vendorIdentifier())
+            if known is not None:
+                out[info.portName()] = known
+    return out
+
+
 class SerialPort(QObject):
     """Thin, event-driven wrapper around QSerialPort.
 
@@ -118,7 +139,10 @@ class SerialPort(QObject):
             if not SerialPort._is_real_device(info):
                 continue
             name = info.portName()
-            desc = info.description() or info.manufacturer() or ""
+            # Some drivers (e.g. Espressif's USB JTAG/serial) report the string
+            # with a trailing NUL, which renders as a box and defeats the
+            # iface != desc comparison below.
+            desc = (info.description() or info.manufacturer() or "").strip("\x00 ")
             iface = bus.get(name, "")
             if iface and iface != desc:
                 desc = f"{desc} - {iface}" if desc else iface

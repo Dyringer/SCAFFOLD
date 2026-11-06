@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from app.core.base_subapp import BaseSubApp, CommandDef, SubAppState

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle, QWidget
 
 from app.core.base_subapp import BaseSubApp, SubAppState
@@ -22,10 +21,6 @@ class SettingsSubApp(BaseSubApp):
         from app.subapps.settings.ui import SettingsPanel
         self._panel = SettingsPanel()
         return self._panel
-
-    def create_header_widget(self) -> QWidget | None:
-        from app.subapps.settings.ui import SettingsHeaderWidget
-        return SettingsHeaderWidget()
 
     def get_settings(self) -> list[SettingDef]:
         return []

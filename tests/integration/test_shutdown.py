@@ -108,23 +108,9 @@ def test_clean_shutdown_default(fresh_profile: str) -> None:
             proc.wait()
 
 
-def test_clean_shutdown_with_chat_active(fresh_profile: str) -> None:
-    """App boots with chat activated (the path that previously hung)."""
-    proc = _spawn(fresh_profile, auto_activate="chat")
-    try:
-        boot_deadline = time.time() + BOOT_TIMEOUT
-        _wait_for_window_shown(proc, boot_deadline)
-        rc = _wait_for_exit(proc, EXIT_TIMEOUT)
-        assert rc == 0, f"expected exit code 0, got {rc}"
-    finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait()
-
-
-def test_clean_shutdown_with_network_tools_active(fresh_profile: str) -> None:
-    """App boots with network_tools activated (multiple QTimers in panels)."""
-    proc = _spawn(fresh_profile, auto_activate="network_tools")
+def test_clean_shutdown_with_serial_terminal_active(fresh_profile: str) -> None:
+    """App boots with the serial terminal activated (port-scan QTimer running)."""
+    proc = _spawn(fresh_profile, auto_activate="serial_terminal")
     try:
         boot_deadline = time.time() + BOOT_TIMEOUT
         _wait_for_window_shown(proc, boot_deadline)

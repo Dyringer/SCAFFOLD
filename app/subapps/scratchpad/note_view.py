@@ -5,6 +5,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget
 
 from app.core.theme_manager import theme_manager
+
 from .editor import MarkdownEditor
 from .highlighter import MarkdownHighlighter
 from .preview import MarkdownPreview
@@ -13,6 +14,12 @@ from .view_toggle import ViewToggleBar
 
 
 class NoteView(QWidget):
+    """Editor / preview stack.
+
+    The Edit / Preview toggle (`toggle_bar`) is not part of this widget's
+    layout: the host places it (the Scratchpad panel puts it in the tab row).
+    """
+
     body_changed = Signal(str)
 
     PAGE_EDIT = 0
@@ -20,14 +27,15 @@ class NoteView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("Plain")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._toggle = ViewToggleBar()
-        layout.addWidget(self._toggle)
+        self.toggle_bar = ViewToggleBar()
 
         self._stack = QStackedWidget()
+        self._stack.setObjectName("Plain")
         layout.addWidget(self._stack, 1)
 
         self.editor = MarkdownEditor()
@@ -40,7 +48,7 @@ class NoteView(QWidget):
         self._suppress_change = False
 
         self.editor.textChanged.connect(self._on_text_changed)
-        self._toggle.mode_changed.connect(self._on_toggle)
+        self.toggle_bar.mode_changed.connect(self._on_toggle)
         theme_manager.theme_changed.connect(self._on_theme_changed)
 
         self._stack.setCurrentIndex(self.PAGE_PREVIEW)
@@ -87,7 +95,7 @@ class NoteView(QWidget):
             self.preview.set_markdown(self.editor.toPlainText())
 
     def enter_edit(self) -> None:
-        self._toggle.set_mode("edit")
+        self.toggle_bar.set_mode("edit")
         self._stack.setCurrentIndex(self.PAGE_EDIT)
         self.editor.setFocus()
         cursor = self.editor.textCursor()
@@ -96,7 +104,7 @@ class NoteView(QWidget):
 
     def enter_preview(self) -> None:
         self.preview.set_markdown(self.editor.toPlainText())
-        self._toggle.set_mode("preview")
+        self.toggle_bar.set_mode("preview")
         self._stack.setCurrentIndex(self.PAGE_PREVIEW)
 
     def toggle_mode(self) -> None:

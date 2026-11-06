@@ -5,6 +5,7 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from app.core.log_handler import log_handler
@@ -42,11 +43,11 @@ def _configure_logging() -> None:
 
 
 def _register_subapps() -> None:
-    from app.subapps.chat.core import ChatSubApp
     from app.subapps.counter.core import CounterSubApp
     from app.subapps.dummy.core import DummySubApp
+    from app.subapps.esp_ota.core import EspOtaSubApp
+    from app.subapps.espflasher.core import EspFlasherSubApp
     from app.subapps.games_hub.core import GamesHubSubApp
-    from app.subapps.network_tools.core import NetworkToolsSubApp
     from app.subapps.programmer_calc.core import ProgrammerCalcSubApp
     from app.subapps.scratchpad.core import ScratchpadSubApp
     from app.subapps.secret.core import SecretSubApp
@@ -68,9 +69,9 @@ def _register_subapps() -> None:
     registry.register(GamesHubSubApp())
     registry.register(ProgrammerCalcSubApp())
     registry.register(ScratchpadSubApp())
-    registry.register(ChatSubApp())
-    registry.register(NetworkToolsSubApp())
     registry.register(SerialTerminalSubApp())
+    registry.register(EspFlasherSubApp())
+    registry.register(EspOtaSubApp())
     registry.register(SettingsSubApp())
 
     registry.register(CounterSubApp())
@@ -92,12 +93,6 @@ def run() -> None:
         async_runner, message_bus, notification_bus,
     )
 
-    # register app-level services. ServiceRegistry handles start order =
-    # registration order, stop order = reverse.
-    from app.core.services import service_registry
-    from app.services.network import network_service
-    service_registry.register("network", network_service)
-
     # apply saved theme before building window
     theme_manager.apply(settings_store.get("app.theme", "light"))
 
@@ -109,16 +104,14 @@ def run() -> None:
     # Consolidated shutdown: tear everything down in the right order so
     # nothing lingers in the background after the main window closes.
     def _shutdown() -> None:
-        """Tear down in strict order: subapps -> services -> window -> threadpool.
+        """Tear down in strict order: subapps -> window -> threadpool.
 
         Why this order matters:
-          1. Subapps may hold references to services (e.g. chat registers
-             a namespace on network_service). Tear them down first so
-             those refs are released before services start closing.
-          2. Services own sockets/threads/timers. Stop them before the
-             window is destroyed so callbacks that touch UI don't run
-             against half-deleted widgets.
-          3. Window owns the tray icon, which on Windows holds shell IPC.
+          1. Subapps own OS handles (serial ports, child processes like
+             esptool) and timers. Release them while the window still
+             exists so callbacks that touch UI don't run against
+             half-deleted widgets.
+          2. Window owns the tray icon, which on Windows holds shell IPC.
              Explicitly hide() before Qt's destructor cleanup — otherwise
              the release can stall and pin the process.
 
@@ -134,10 +127,6 @@ def run() -> None:
             registry.shutdown_all()
         except Exception:
             log.exception("registry.shutdown_all failed")
-        try:
-            service_registry.stop_all()
-        except Exception:
-            log.exception("service_registry.stop_all failed")
         try:
             window.shutdown()
         except Exception:
@@ -163,9 +152,6 @@ def run() -> None:
 
     window.show()
     log.info("Window shown")
-
-    from PySide6.QtCore import QTimer
-    QTimer.singleShot(0, service_registry.start_all)
 
     # Test hook: auto-quit after N ms. Used by the integration test to
     # exercise the real shutdown path without manual UI interaction.

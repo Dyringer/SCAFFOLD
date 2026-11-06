@@ -72,14 +72,23 @@ class SerialTerminalSubApp(BaseSubApp):
         pass
 
     def shutdown(self) -> None:
-        # Release the OS serial handle during teardown, before services
-        # stop and the window is destroyed. See feedback-shutdown-architecture.
+        # Release the OS serial handle during teardown, before the window is
+        # destroyed. See feedback-shutdown-architecture.
         if self._panel is not None:
             self._panel.close_port()  # type: ignore[attr-defined]
 
-    def _call(self, method: str) -> None:
+    # ------------------------------------------------------------------
+    # cross-subapp API (used by the ESP flasher)
+
+    def release_port(self, port: str) -> bool:
+        """Close `port` if a terminal session has it open. True if it was."""
         if self._panel is None:
-            return
-        fn = getattr(self._panel, method, None)
-        if callable(fn):
-            fn()
+            return False
+        return self._panel.release_port(port)  # type: ignore[attr-defined]
+
+    def open_console(self, port: str) -> None:
+        """Switch to the terminal and open a session on `port`."""
+        from app.core.registry import registry
+        registry.activate(self.id)   # builds the panel on first use
+        if self._panel is not None:
+            self._panel.open_port(port)  # type: ignore[attr-defined]

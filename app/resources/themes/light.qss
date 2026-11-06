@@ -38,17 +38,6 @@ QLineEdit {
 #HeaderBar QPushButton:hover  { background-color: #eeeeee; }
 #HeaderBar QPushButton:pressed { background-color: #dddddd; }
 
-#HeaderCompactBtn {
-    background-color: #e8e8e8;
-    border: 1px solid #c8c8c8;
-    border-radius: 4px;
-    color: #333;
-    font-size: 12px;
-    padding: 0 10px;
-}
-#HeaderCompactBtn:hover  { background-color: #d8d8d8; }
-#HeaderCompactBtn:pressed { background-color: #c8c8c8; }
-
 /* Sidebar */
 #SidePanel {
     background-color: #ffffff;
@@ -168,33 +157,6 @@ QLineEdit {
     background-color: rgba(245, 245, 245, 200);
 }
 
-/* Test Suite cards */
-#TestCard {
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-}
-#TestCardTitle {
-    font-size: 13px;
-    font-weight: 600;
-    color: #333;
-    background: transparent;
-}
-#TestCardSep {
-    color: #e0e0e0;
-    background-color: #e0e0e0;
-    max-height: 1px;
-}
-
-/* Settings panel */
-#SettingsSection QLabel#SectionTitle {
-    font-size: 14px;
-    font-weight: 600;
-    color: #333;
-    padding-bottom: 4px;
-    background: transparent;
-}
-
 /* ── Games Hub ──────────────────────────────────────────────── */
 
 /* Hub game card */
@@ -272,3 +234,280 @@ QLineEdit {
 }
 #GameOverHubBtn:hover  { background-color: #f0f0f0; color: #333; }
 #GameOverHubBtn:pressed { background-color: #e0e0e0; }
+
+/* ── Modern widget kit ──────────────────────────────────────
+   Shared look for subapps that call app.ui.widgets.mark_modern() on their
+   root panel (sets modern="true"). */
+
+*[modern="true"] QSplitter::handle { background: transparent; }
+*[modern="true"] QWidget#Plain, *[modern="true"] #PortItem, *[modern="true"] QScrollArea#Scroll,
+*[modern="true"] QScrollArea#Scroll > QWidget#qt_scrollarea_viewport,
+*[modern="true"] QListWidget#PortList > QWidget#qt_scrollarea_viewport { background: transparent; }
+
+*[modern="true"] QFrame#Card {
+    background-color: #ffffff;
+    border: 1px solid #e3e3e3;
+    border-radius: 10px;
+}
+*[modern="true"] QFrame#Card[state="drop"] { border: 1px dashed #1a56db; background-color: #f0f4ff; }
+*[modern="true"] #CardTitle  { color: #6b7280; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+*[modern="true"] #Hint       { color: #6b7280; }
+*[modern="true"] #FieldLabel { color: #6b7280; font-size: 11px; }
+*[modern="true"] #StatValue  { color: #111827; font-size: 15px; font-weight: 600; }
+*[modern="true"] #StatValue[state="rec"] { color: #dc2626; }
+*[modern="true"] #EmptyIcon  { font-size: 40px; color: #6b7280; }
+*[modern="true"] #EmptyTitle { color: #111827; font-size: 16px; font-weight: 600; }
+*[modern="true"] #Display    { color: #111827; font-size: 56px; font-weight: 300; }
+*[modern="true"] #StatusText { color: #6b7280; }
+*[modern="true"] #StatusText[state="error"] { color: #dc2626; }
+
+/* buttons: plain = ghost, #PrimaryBtn = filled accent, #IconBtn = borderless */
+*[modern="true"] QPushButton {
+    background: transparent;
+    color: #374151;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 5px 12px;
+}
+*[modern="true"] QPushButton:hover    { background-color: #f0f0f0; border-color: #b5b5b5; }
+*[modern="true"] QPushButton:pressed  { background-color: #e5e5e5; }
+*[modern="true"] QPushButton:disabled { color: #b0b0b0; border-color: #e5e5e5; }
+*[modern="true"] QPushButton:checked  { background-color: #e3eaf7; color: #1a56db; border-color: #9ab3e8; }
+*[modern="true"] QPushButton#PrimaryBtn {
+    background-color: #1a56db;
+    color: #ffffff;
+    border: 1px solid #1a56db;
+    border-radius: 8px;
+    padding: 9px 22px;
+    font-size: 14px;
+    font-weight: 600;
+}
+*[modern="true"] QPushButton#PrimaryBtn:hover    { background-color: #2563eb; border-color: #2563eb; }
+*[modern="true"] QPushButton#PrimaryBtn:pressed  { background-color: #1e40af; border-color: #1e40af; }
+*[modern="true"] QPushButton#PrimaryBtn:disabled { background-color: #d5deef; border-color: #d5deef; color: #8a97b0; }
+*[modern="true"] QPushButton#PrimaryBtn[compact="true"] { padding: 6px 16px; font-size: 13px; border-radius: 6px; }
+*[modern="true"] QPushButton#PrimaryBtn[state="danger"] { background-color: #fde8e8; color: #dc2626; border-color: #f1b4b4; }
+*[modern="true"] QPushButton#PrimaryBtn[state="danger"]:hover { background-color: #fbd5d5; }
+*[modern="true"] QPushButton#IconBtn {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+    min-width: 28px; max-width: 28px;
+    min-height: 28px; max-height: 28px;
+    color: #6b7280;
+    font-size: 14px;
+}
+*[modern="true"] QPushButton#IconBtn:hover { background-color: #eceef2; color: #111827; }
+*[modern="true"] QPushButton#IconBtn[kind="danger"]:hover { background-color: #fde8e8; color: #dc2626; }
+
+/* inputs */
+*[modern="true"] QComboBox, *[modern="true"] QLineEdit, *[modern="true"] QSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #1a1a1a;
+    selection-background-color: #cfe0fb;
+}
+*[modern="true"] QComboBox:hover, *[modern="true"] QLineEdit:hover, *[modern="true"] QSpinBox:hover       { border-color: #b5b5b5; }
+*[modern="true"] QComboBox:focus, *[modern="true"] QLineEdit:focus, *[modern="true"] QSpinBox:focus       { border-color: #1a56db; }
+*[modern="true"] QComboBox:disabled, *[modern="true"] QLineEdit:disabled, *[modern="true"] QSpinBox:disabled { color: #b0b0b0; background-color: #f7f7f7; }
+*[modern="true"] QLineEdit[readOnly="true"] { background-color: #f8f9fb; }
+*[modern="true"] QComboBox::drop-down { border: none; width: 22px; }
+*[modern="true"] QComboBox::down-arrow {
+    image: url(@THEMES@/icons/chevron-down-light.svg);
+    width: 12px; height: 12px; margin-right: 8px;
+}
+*[modern="true"] QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #d0d0d0;
+    selection-background-color: #e3eaf7;
+    selection-color: #1a56db;
+    outline: 0;
+}
+*[modern="true"] QComboBox QLineEdit { background: transparent; border: none; padding: 0; }
+*[modern="true"] QSpinBox::up-button, *[modern="true"] QSpinBox::down-button { width: 0; border: none; }
+
+ToggleSwitch {
+    background: transparent;
+    color: #1a1a1a;
+    qproperty-trackOn: #1a56db;
+    qproperty-trackOff: #c9cdd4;
+    qproperty-knob: #ffffff;
+}
+
+/* tabs as a segmented pill bar */
+*[modern="true"] QTabWidget::pane { border: none; background: transparent; top: 6px; }
+*[modern="true"] QTabWidget::tab-bar { left: 0px; }
+*[modern="true"] QTabBar { background: transparent; }
+*[modern="true"] QTabBar::tab {
+    background: transparent;
+    color: #6b7280;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 6px 16px;
+    margin-right: 4px;
+    font-weight: 600;
+}
+*[modern="true"] QTabBar::tab:hover    { color: #1a1a1a; background-color: #f0f0f0; }
+*[modern="true"] QTabBar::tab:selected { color: #1a56db; background-color: #e3eaf7; border-color: #9ab3e8; }
+
+/* port list */
+*[modern="true"] QListWidget#PortList { background: transparent; border: none; outline: 0; }
+*[modern="true"] QListWidget#PortList::item { border: 1px solid transparent; border-radius: 8px; margin: 2px 0; }
+*[modern="true"] QListWidget#PortList::item:hover    { background-color: #f3f4f6; }
+*[modern="true"] QListWidget#PortList::item:selected { background-color: #e3eaf7; border-color: #9ab3e8; }
+*[modern="true"] #PortName { font-size: 14px; font-weight: 600; color: #111827; }
+*[modern="true"] #PortDesc { color: #6b7280; font-size: 12px; }
+*[modern="true"] #PortDot  { font-size: 10px; color: #6b7280; }
+*[modern="true"] #PortDot[state="live"] { color: #16a34a; }
+*[modern="true"] #PortDot[state="open"] { color: #1a56db; }
+
+*[modern="true"] #Badge {
+    border-radius: 9px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background-color: #eef0f3;
+    color: #4b5563;
+}
+*[modern="true"] #Badge[kind="esp"]    { background-color: #fdf0dc; color: #b45309; }
+*[modern="true"] #Badge[kind="bridge"] { background-color: #e3eaf7; color: #1a56db; }
+*[modern="true"] #Badge[kind="live"]   { background-color: #dcfce7; color: #16a34a; }
+*[modern="true"] #Badge[kind="rec"]    { background-color: #fde8e8; color: #dc2626; }
+*[modern="true"] #Badge[state="missing"] { background-color: #fde8e8; color: #dc2626; }
+
+*[modern="true"] QTextEdit#Console, *[modern="true"] QPlainTextEdit#Console {
+    background-color: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px;
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+    color: #1f2937;
+    selection-background-color: #cfe0fb;
+}
+*[modern="true"] QTextEdit#Console:focus { border-color: #9ab3e8; }
+*[modern="true"] #Plot { background: transparent; border: none; }
+
+*[modern="true"] QScrollBar:vertical   { background: transparent; width: 10px; margin: 2px; }
+*[modern="true"] QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
+*[modern="true"] QScrollBar::handle    { background: #cfd4dc; border-radius: 3px; min-height: 24px; min-width: 24px; }
+*[modern="true"] QScrollBar::handle:hover { background: #b5bcc7; }
+*[modern="true"] QScrollBar::add-line, *[modern="true"] QScrollBar::sub-line { width: 0; height: 0; }
+*[modern="true"] QScrollBar::add-page, *[modern="true"] QScrollBar::sub-page { background: none; }
+
+/* hero status block: big stage title, detail line, percent, slim progress bar */
+*[modern="true"] #HeroStage { font-size: 20px; font-weight: 600; color: #111827; }
+*[modern="true"] #HeroStage[state="busy"]  { color: #1a56db; }
+*[modern="true"] #HeroStage[state="ok"]    { color: #16a34a; }
+*[modern="true"] #HeroStage[state="error"] { color: #dc2626; }
+*[modern="true"] #HeroDetail { color: #6b7280; }
+*[modern="true"] #HeroPercent { font-size: 26px; font-weight: 300; color: #111827; padding-right: 6px; }
+*[modern="true"] QProgressBar#HeroProgress { background-color: #e5e7eb; border: none; border-radius: 4px; }
+*[modern="true"] QProgressBar#HeroProgress::chunk { background-color: #1a56db; border-radius: 4px; }
+*[modern="true"] QProgressBar#HeroProgress[state="ok"]::chunk    { background-color: #16a34a; }
+*[modern="true"] QProgressBar#HeroProgress[state="error"]::chunk { background-color: #dc2626; }
+
+/* file row: [name / folder · date] [size badge] — ESP Flasher images, OTA firmware */
+*[modern="true"] QFrame#FileRow { background-color: #f8f9fb; border: 1px solid #e5e7eb; border-radius: 8px; }
+*[modern="true"] QFrame#FileRow:hover { border-color: #cfd4dc; }
+*[modern="true"] QFrame#FileRow[state="missing"] { border-color: #f1b4b4; }
+*[modern="true"] QFrame#FileRow[state="warn"] { border-color: #b45309; }
+*[modern="true"] #Badge[state="warn"] { background-color: #fdf0dc; color: #b45309; }
+*[modern="true"] #FileName { font-weight: 600; color: #111827; }
+*[modern="true"] #FileDir  { color: #6b7280; font-size: 11px; }
+*[modern="true"] #FileName[state="empty"] { color: #6b7280; font-weight: 400; font-style: italic; }
+*[modern="true"] #FileWarning { color: #b45309; font-size: 11px; }
+
+/* ── Programmer Calculator ──────────────────────────────────── */
+
+*[modern="true"] QLineEdit#CalcInput {
+    font-family: "Consolas", monospace;
+    font-size: 20px;
+    padding: 10px 14px;
+    border-radius: 8px;
+}
+*[modern="true"] QLineEdit#CalcInput[state="error"] { border-color: #dc2626; }
+*[modern="true"] #CalcValue { font-family: "Consolas", monospace; font-size: 17px; color: #111827; }
+*[modern="true"] #CalcHistExpr { font-family: "Consolas", monospace; font-size: 13px; color: #111827; }
+*[modern="true"] #CalcHistResult { font-family: "Consolas", monospace; font-size: 12px; color: #6b7280; }
+*[modern="true"] QPushButton#CalcKey {
+    background-color: #f8f9fb;
+    color: #1a1a1a;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0;
+    font-family: "Consolas", monospace;
+    font-size: 16px;
+}
+*[modern="true"] QPushButton#CalcKey:hover   { border-color: #cfd4dc; background-color: #f0f0f0; }
+*[modern="true"] QPushButton#CalcKey:pressed { background-color: #e5e5e5; }
+*[modern="true"] QPushButton#CalcKey[kind="op"]     { color: #1a56db; }
+*[modern="true"] QPushButton#CalcKey[kind="muted"]  { color: #6b7280; }
+*[modern="true"] QPushButton#CalcKey[kind="danger"] { color: #dc2626; }
+*[modern="true"] QPushButton#CalcKey[kind="danger"]:hover { background-color: #fde8e8; border-color: #f1b4b4; }
+
+/* ── ESP Flasher ────────────────────────────────────────────── */
+
+*[modern="true"] #FileName[state="disabled"], *[modern="true"] #FileDir[state="disabled"] { color: #b0b0b0; }
+*[modern="true"] QComboBox#EfOffset { font-family: "Consolas", monospace; }
+*[modern="true"] QComboBox#EfOffset[state="error"] { border-color: #dc2626; }
+
+/* ── Scratchpad ──────────────────────────────── */
+
+/* editor = console surface (keeps the app font), preview = card surface */
+*[modern="true"] QPlainTextEdit#SpEditor {
+    background-color: #fafafa;
+    border: 1px solid #e3e3e3;
+    border-radius: 8px;
+    padding: 6px 8px;
+    color: #1f2937;
+    selection-background-color: #cfe0fb;
+}
+*[modern="true"] QPlainTextEdit#SpEditor:focus { border-color: #1a56db; }
+*[modern="true"] QTextBrowser#SpPreview {
+    background-color: #ffffff;
+    border: 1px solid #e3e3e3;
+    border-radius: 8px;
+    padding: 6px 8px;
+    color: #1a1a1a;
+    selection-background-color: #cfe0fb;
+}
+
+/* Edit / Preview: kit ghost buttons, pill-shaped like the tabs */
+*[modern="true"] QPushButton#SpModeBtn { padding: 5px 14px; border-radius: 7px; }
+
+/* tag filter chips: neutral pill, accent when checked */
+*[modern="true"] QPushButton#SpTagChip {
+    background-color: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #d0d0d0;
+    border-radius: 11px;
+    padding: 2px 10px;
+    font-size: 12px;
+}
+*[modern="true"] QPushButton#SpTagChip:hover   { border-color: #6b7280; color: #111827; }
+*[modern="true"] QPushButton#SpTagChip:checked { background-color: #e3eaf7; color: #1a56db; border-color: #1a56db; }
+
+/* quick-open / command palette popups (top-level; draw a Card on a clear window) */
+*[modern="true"]#SpPopup { background: transparent; }
+*[modern="true"] #SpRowText { color: #1a1a1a; }
+*[modern="true"] #SpRowText[state="disabled"] { color: #6b7280; }
+*[modern="true"] #SpRowMeta { color: #6b7280; font-size: 11px; }
+
+/* note tabs: kit pill tabs, room on the right for a themed close button */
+*[modern="true"] QTabBar#SpTabBar::tab { padding: 6px 8px 6px 14px; }
+*[modern="true"] QPushButton#SpTabClose {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+    min-width: 16px; max-width: 16px;
+    min-height: 16px; max-height: 16px;
+    color: #6b7280;
+    font-size: 11px;
+}
+*[modern="true"] QPushButton#SpTabClose:hover { color: #dc2626; }

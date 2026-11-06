@@ -15,8 +15,8 @@ shows up in the sidebar.
 | **Scratchpad** | Markdown notepad with live preview, tag chips, auto-continuing lists, full-text search |
 | **Programmer Calculator** | DEC / HEX / BIN with bitwise ops and on-screen keypad |
 | **Games Hub** | Tetris, Snake, Breakout, Space Invaders, Pong, Bomberman, Icy Tower, Asteroids, Asteroid Bomber — with per-game high scores |
-| **Network Tools** | LAN discovery, host probes, interface picker (defaults to RFC1918, not VPNs) |
-| **Chat** | In-app message panel built on the typed message bus |
+| **Serial Terminal** | UART console with ANSI colour, hex view, live plotting and session capture |
+| **ESP Flasher** | Flash ESP32 / ESP32-S3 firmware via esptool, with progress and auto-open console |
 | **Settings** | Aggregated per-sub-app settings, themes, tray behaviour |
 
 Under the hood: extensible sub-app registry, typed message bus, command palette,

@@ -20,7 +20,7 @@ import time
 from collections import deque
 
 import pyqtgraph as pg
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -36,6 +36,7 @@ from app.subapps.serial_terminal.plot_parser import (
     MultiSeriesExtractor,
     SeriesSpec,
 )
+from app.ui.widgets import Card, field_label, set_state
 
 # Redraw cadence — same ~30 fps target as the console flush. Visually live,
 # but decouples paint rate from the device's output rate.
@@ -100,7 +101,9 @@ class _SeriesRow(QWidget):
         self.label_edit.returnPressed.connect(on_apply)
         row.addWidget(self.label_edit)
         remove_btn = QPushButton("✕")
-        remove_btn.setFixedWidth(28)
+        remove_btn.setObjectName("IconBtn")
+        remove_btn.setProperty("kind", "danger")
+        remove_btn.setCursor(Qt.PointingHandCursor)
         remove_btn.setToolTip("Remove this series")
         remove_btn.clicked.connect(lambda: on_remove(self))
         row.addWidget(remove_btn)
@@ -147,16 +150,23 @@ class PlotView(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(6)
-        root.addLayout(self._build_panel())
+        root.setSpacing(12)
+        series_card = Card("Series")
+        series_card.body.addLayout(self._build_panel())
+        root.addWidget(series_card)
 
         pg.setConfigOptions(antialias=True)
         self._plot = pg.PlotWidget()
+        self._plot.setObjectName("Plot")
+        # Transparent so the card colour shows through in both themes.
+        self._plot.setBackground(None)
         self._plot.showGrid(x=True, y=True, alpha=0.15)
         self._plot.addLegend()
         self._plot.setLabel("bottom", "x")
         self._plot.setLabel("left", "y")
-        root.addWidget(self._plot, 1)
+        plot_card = Card(margins=(8, 8, 8, 8))
+        plot_card.body.addWidget(self._plot, 1)
+        root.addWidget(plot_card, 1)
 
         # Coalesced repaint timer — the only thing that calls setData.
         self._redraw = QTimer(self)
@@ -172,12 +182,12 @@ class PlotView(QWidget):
 
     def _build_panel(self) -> QVBoxLayout:
         panel = QVBoxLayout()
-        panel.setSpacing(4)
+        panel.setSpacing(6)
 
         # X-axis row.
         xrow = QHBoxLayout()
         xrow.setSpacing(6)
-        xrow.addWidget(QLabel("X axis:"))
+        xrow.addWidget(field_label("X AXIS"))
         self._x_edit = QLineEdit()
         self._x_edit.setPlaceholderText(r"regex for X  (empty = elapsed time)")
         self._x_edit.setToolTip(
@@ -199,7 +209,7 @@ class PlotView(QWidget):
         # forever. Units are seconds (drop points older than W on the X axis,
         # meaningful when X is time-like) or samples (keep the last N points).
         xrow.addSpacing(12)
-        xrow.addWidget(QLabel("Window:"))
+        xrow.addWidget(field_label("WINDOW"))
         self._window_edit = QLineEdit()
         self._window_edit.setMaximumWidth(70)
         self._window_edit.setPlaceholderText("all")
@@ -218,7 +228,7 @@ class PlotView(QWidget):
         panel.addLayout(xrow)
 
         # Y-series rows live in their own vertical box so we can add/remove.
-        panel.addWidget(QLabel("Y series:"))
+        panel.addWidget(field_label("Y SERIES"))
         self._rows_box = QVBoxLayout()
         self._rows_box.setSpacing(4)
         self._rows: list[_SeriesRow] = []
@@ -227,15 +237,17 @@ class PlotView(QWidget):
         # Buttons row: add series, apply, pause, clear, status.
         btns = QHBoxLayout()
         btns.setSpacing(6)
-        add_btn = QPushButton("+ Series")
+        add_btn = QPushButton("+  Series")
         add_btn.clicked.connect(lambda: self._add_row(""))
         btns.addWidget(add_btn)
         apply_btn = QPushButton("Apply")
+        apply_btn.setObjectName("PrimaryBtn")
+        apply_btn.setProperty("compact", True)
         apply_btn.clicked.connect(self._apply)
         btns.addWidget(apply_btn)
         btns.addStretch(1)
         self._status = QLabel("")
-        self._status.setStyleSheet("color: #888;")
+        self._status.setObjectName("StatusText")
         btns.addWidget(self._status)
         self._pause_btn = QPushButton("Pause")
         self._pause_btn.setCheckable(True)
@@ -382,18 +394,18 @@ class PlotView(QWidget):
             specs.append(SeriesSpec(name=name, pattern=pat))
         if not specs:
             self._status.setText("⚠ add at least one Y series")
-            self._status.setStyleSheet("color: #c0392b;")
+            set_state(self._status, "error")
             return
         try:
             extractor = MultiSeriesExtractor(cfg["x"], specs)
         except re.error as exc:
             self._status.setText(f"⚠ bad regex: {exc}")
-            self._status.setStyleSheet("color: #c0392b;")
+            set_state(self._status, "error")
             return
 
         self._window, self._window_seconds = self._parse_window(cfg)
 
-        self._status.setStyleSheet("color: #888;")
+        set_state(self._status, "")
         self._extractor = extractor
         self._rebuild_series([s.name for s in specs])
         self._assembler.reset()

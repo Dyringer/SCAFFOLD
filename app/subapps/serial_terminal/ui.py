@@ -5,7 +5,6 @@ import contextlib
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -18,17 +17,19 @@ from PySide6.QtWidgets import (
 
 from app.core.resource_manager import local_dir
 from app.core.settings_store import settings_store
+from app.subapps.serial_terminal.demo_port import DEMO_PORT_NAME
 from app.subapps.serial_terminal.file_port import FILE_PORT_NAME
-from app.subapps.serial_terminal.port_io import SerialPort
+from app.subapps.serial_terminal.port_io import SerialPort, usb_badges
 from app.subapps.serial_terminal.session import TerminalSession
+from app.ui.widgets import Card, PortItem, mark_modern, set_state
 
 
 class SerialTerminalPanel(QWidget):
     """Serial (UART) terminal host.
 
     Left: a list of every available port that doubles as the session
-    switcher. A marker shows each port's state — ▶ active session,
-    ● open in a background session, ○ free. Clicking a free port connects
+    switcher. A dot + badge shows each port's state — green/LIVE: the session
+    on screen, blue/OPEN: connected in the background, none: free. Clicking a free port connects
     it (spawning a session); clicking an open port switches the console to
     its session. Right: a stacked area showing the active session's console.
 
@@ -40,20 +41,26 @@ class SerialTerminalPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        self.setObjectName("SerialTerminal")
+        mark_modern(self)
+
         # port name -> its session (only ports with a live/lingering session)
         self._sessions: dict[str, TerminalSession] = {}
+        # Last rendered port list (name, desc, status); the 1 s rescan only
+        # rebuilds the item widgets when this changes, so the list never flickers.
+        self._port_snapshot: list[tuple[str, str, str]] = []
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(8, 8, 8, 8)
-        outer.setSpacing(6)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(0)
 
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(6)
+        splitter.setHandleWidth(12)
         splitter.addWidget(self._build_left())
         splitter.addWidget(self._build_right())
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 6)
-        splitter.setSizes([240, 720])
+        splitter.setSizes([270, 730])
         outer.addWidget(splitter, 1)
 
         self._scan_timer = QTimer(self)
@@ -69,40 +76,48 @@ class SerialTerminalPanel(QWidget):
     # construction
 
     def _build_left(self) -> QWidget:
-        left = QWidget()
-        ll = QVBoxLayout(left)
-        ll.setContentsMargins(0, 0, 0, 0)
-        ll.setSpacing(6)
-
-        title = QLabel("Ports")
-        title.setStyleSheet("font-weight: 600;")
-        ll.addWidget(title)
+        card = Card("Ports")
+        refresh_btn = QPushButton("⟳")
+        refresh_btn.setObjectName("IconBtn")
+        refresh_btn.setToolTip("Rescan ports")
+        refresh_btn.setCursor(Qt.PointingHandCursor)
+        refresh_btn.clicked.connect(lambda: self._refresh_ports(force=True))
+        card.header.addWidget(refresh_btn)
 
         self._port_list = QListWidget()
+        self._port_list.setObjectName("PortList")
+        self._port_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         self._port_list.currentItemChanged.connect(self._on_row_changed)
         self._port_list.itemDoubleClicked.connect(lambda _i: self._activate_selected())
-        ll.addWidget(self._port_list, 1)
+        card.body.addWidget(self._port_list, 1)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
         self._connect_btn = QPushButton("Connect")
+        self._connect_btn.setObjectName("PrimaryBtn")
+        self._connect_btn.setProperty("compact", True)
+        self._connect_btn.setCursor(Qt.PointingHandCursor)
         self._connect_btn.clicked.connect(self._activate_selected)
-        btn_row.addWidget(self._connect_btn, 1)
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.clicked.connect(self._refresh_ports)
-        btn_row.addWidget(refresh_btn)
-        ll.addLayout(btn_row)
-
-        return left
+        card.body.addWidget(self._connect_btn)
+        return card
 
     def _build_right(self) -> QWidget:
         self._stack = QStackedWidget()
-        self._placeholder = QLabel(
-            "Select a port on the left and press Connect\n"
-            "to open a serial session."
-        )
-        self._placeholder.setAlignment(Qt.AlignCenter)
-        self._placeholder.setStyleSheet("color: #888;")
+        self._stack.setObjectName("Plain")
+
+        # Empty state, shown until the first session is opened.
+        self._placeholder = Card()
+        lay = self._placeholder.body
+        lay.addStretch(1)
+        for text, name in (
+            ("🔌", "EmptyIcon"),
+            ("No session open", "EmptyTitle"),
+            ("Pick a port on the left and press Connect (or double-click it).\n"
+             "DEMO streams synthetic data; FILE replays a saved capture.", "Hint"),
+        ):
+            lbl = QLabel(text)
+            lbl.setObjectName(name)
+            lbl.setAlignment(Qt.AlignCenter)
+            lay.addWidget(lbl)
+        lay.addStretch(1)
         self._stack.addWidget(self._placeholder)
         return self._stack
 
@@ -163,26 +178,42 @@ class SerialTerminalPanel(QWidget):
     # ------------------------------------------------------------------
     # port list (also the session switcher)
 
-    def _refresh_ports(self) -> None:
-        ports = SerialPort.available_ports()
+    def _port_status(self, name: str, active_port: str | None) -> str:
+        session = self._sessions.get(name)
+        if session is None or not session.is_open:
+            return ""         # not connected (history kept if a session exists)
+        return "live" if name == active_port else "open"
+
+    def _refresh_ports(self, force: bool = False) -> None:
         active = self._active_session()
         active_port = active.port_name if active is not None and active.is_open else None
+        ports = [(name, desc, self._port_status(name, active_port))
+                 for name, desc in SerialPort.available_ports()]
+        if ports == self._port_snapshot and not force:
+            self._update_buttons()
+            return
+        self._port_snapshot = ports
+        chips = usb_badges()
         current = self._selected_port()
 
         self._port_list.blockSignals(True)
         self._port_list.clear()
-        for name, desc in ports:
-            session = self._sessions.get(name)
-            if session is not None and session.is_open and name == active_port:
-                mark = "▶ "   # connected and showing in the console
-            elif session is not None and session.is_open:
-                mark = "● "   # connected in the background
-            else:
-                mark = "○ "   # not connected (history kept if a session exists)
-            text = f"{mark}{name}" + (f"   {desc}" if desc else "")
-            item = QListWidgetItem(text)
+        for name, desc, status in ports:
+            badges: list[tuple[str, str]] = []
+            if status == "live":
+                badges.append(("LIVE", "live"))
+            elif status == "open":
+                badges.append(("OPEN", "bridge"))
+            if name in (DEMO_PORT_NAME, FILE_PORT_NAME):
+                badges.append((name, ""))
+            elif name in chips:
+                badges.append(chips[name])
+            widget = PortItem(name, desc, badges, status)
+            item = QListWidgetItem()
             item.setData(Qt.UserRole, name)
+            item.setSizeHint(widget.sizeHint())
             self._port_list.addItem(item)
+            self._port_list.setItemWidget(item, widget)
             if name == current:
                 self._port_list.setCurrentItem(item)
         self._port_list.blockSignals(False)
@@ -198,7 +229,7 @@ class SerialTerminalPanel(QWidget):
         session = self._sessions.get(port) if port else None
         if session is not None:
             self._stack.setCurrentWidget(session)
-            self._refresh_ports()  # repaint markers (▶ moves)
+            self._refresh_ports()  # repaint markers (LIVE moves)
         self._update_buttons()
 
     def _activate_selected(self) -> None:
@@ -214,10 +245,12 @@ class SerialTerminalPanel(QWidget):
         if session is not None and session.is_open:
             self._connect_btn.setText("Disconnect")
             self._connect_btn.setEnabled(True)
+            set_state(self._connect_btn, "danger")
             self._rebind(self._disconnect_selected)
         else:
             self._connect_btn.setText("Connect")
             self._connect_btn.setEnabled(port is not None)
+            set_state(self._connect_btn, "")
             self._rebind(self._activate_selected)
 
     def _rebind(self, slot) -> None:
@@ -251,6 +284,26 @@ class SerialTerminalPanel(QWidget):
         session = self._active_session()
         if session is not None:
             session.clear_console()
+
+    def release_port(self, port: str) -> bool:
+        """Disconnect `port` if a session holds it open, so another tool (the
+        ESP flasher) can use it. History is kept. Returns True if it was open."""
+        session = self._sessions.get(port)
+        if session is None or not session.is_open:
+            return False
+        session.disconnect()
+        self._refresh_ports()
+        return True
+
+    def open_port(self, port: str) -> None:
+        """Select `port` in the list and connect (or switch to) its session."""
+        self._refresh_ports()
+        for i in range(self._port_list.count()):
+            item = self._port_list.item(i)
+            if item.data(Qt.UserRole) == port:
+                self._port_list.setCurrentItem(item)
+                break
+        self._open_session(port)
 
     def close_port(self) -> None:
         """Tear down all sessions (called on app shutdown)."""

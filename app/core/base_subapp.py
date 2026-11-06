@@ -37,6 +37,8 @@ class BaseSubApp(QObject, metaclass=_Meta):
     name: str = ""
     icon: QIcon
     hidden: bool = False
+    # The body widget, for subapps that keep it from create_body().
+    _panel: QWidget | None = None
 
     @abstractmethod
     def create_body(self) -> QWidget: ...
@@ -60,9 +62,9 @@ class BaseSubApp(QObject, metaclass=_Meta):
         """Release resources held by this subapp.
 
         Called once during app teardown (in reverse registration order)
-        before services are stopped and the window is destroyed.
-        Default is a no-op; override when the subapp holds network
-        namespaces, file handles, child threads, or anything that
+        before the window is destroyed.
+        Default is a no-op; override when the subapp holds serial
+        ports, child processes, file handles, threads, or anything that
         would otherwise pin the process.
         """
         pass
@@ -75,3 +77,9 @@ class BaseSubApp(QObject, metaclass=_Meta):
     ) -> None:
         from app.core.async_runner import async_runner
         async_runner.run(fn, on_done, on_error)
+
+    def _call(self, method: str) -> None:
+        """Call `method` on the panel if it has been built (command callbacks)."""
+        fn = getattr(self._panel, method, None)
+        if callable(fn):
+            fn()

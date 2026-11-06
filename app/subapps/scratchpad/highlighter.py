@@ -4,36 +4,38 @@ import re
 
 from PySide6.QtCore import QRegularExpression
 from PySide6.QtGui import (
-    QColor, QFont, QSyntaxHighlighter, QTextCharFormat, QTextDocument,
+    QColor,
+    QFont,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextDocument,
 )
 
 from app.core.theme_manager import theme_manager
+from app.ui.palette import palette as ui_palette
+
+_MONO = ["Consolas", "Cascadia Mono", "monospace"]
+
+# Markdown role -> modern palette token (see app/ui/palette.py).
+_ROLES = {
+    "heading": "accent",
+    "bold":    "strong",
+    "italic":  "console_fg",
+    "code":    "console_fg",
+    "fence":   "muted",
+    "link":    "accent",
+    "quote":   "muted",
+    "list":    "accent",
+    "hr":      "muted",
+    "tag":     "accent",
+    "tag_bg":  "accent_soft",
+}
 
 
 def palette(dark: bool) -> dict[str, QColor]:
-    if dark:
-        return {
-            "heading": QColor("#82aaff"),
-            "bold":    QColor("#ffcb6b"),
-            "italic":  QColor("#c792ea"),
-            "code":    QColor("#a5e844"),
-            "link":    QColor("#7fdbff"),
-            "quote":   QColor("#888888"),
-            "list":    QColor("#ffcb6b"),
-            "hr":      QColor("#666666"),
-            "tag":     QColor("#f78c6c"),
-        }
-    return {
-        "heading": QColor("#1f5fbf"),
-        "bold":    QColor("#a14a00"),
-        "italic":  QColor("#7a3aa3"),
-        "code":    QColor("#2a6f2a"),
-        "link":    QColor("#0a6ea1"),
-        "quote":   QColor("#666666"),
-        "list":    QColor("#a14a00"),
-        "hr":      QColor("#999999"),
-        "tag":     QColor("#b34a2a"),
-    }
+    """Markdown role colours for the dark or light theme, from the modern palette."""
+    tokens = ui_palette("dark" if dark else "light")
+    return {role: QColor(tokens[token]) for role, token in _ROLES.items()}
 
 
 class MarkdownHighlighter(QSyntaxHighlighter):
@@ -41,6 +43,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         super().__init__(document)
         self._rules: list[tuple[QRegularExpression, QTextCharFormat]] = []
         self._fence_format = QTextCharFormat()
+        self._fence_marker_format = QTextCharFormat()
         self._build_rules()
         theme_manager.theme_changed.connect(self._on_theme_changed)
 
@@ -77,7 +80,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         code = QTextCharFormat()
         code.setForeground(c["code"])
-        code.setFontFamilies(["Consolas", "Cascadia Mono", "monospace"])
+        code.setFontFamilies(_MONO)
         rules.append((QRegularExpression(r"`[^`\n]+`"), code))
 
         link = QTextCharFormat()
@@ -103,21 +106,24 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         tag = QTextCharFormat()
         tag.setForeground(c["tag"])
-        tag.setFontWeight(QFont.Bold)
+        tag.setBackground(c["tag_bg"])
+        tag.setFontWeight(QFont.DemiBold)
         rules.append((QRegularExpression(r"(?<![\w/&])#[A-Za-z][\w\-]*"), tag))
 
         self._rules = rules
 
         self._fence_format = QTextCharFormat()
         self._fence_format.setForeground(c["code"])
-        self._fence_format.setFontFamilies(["Consolas", "Cascadia Mono", "monospace"])
+        self._fence_format.setFontFamilies(_MONO)
+        self._fence_marker_format = QTextCharFormat(self._fence_format)
+        self._fence_marker_format.setForeground(c["fence"])
 
-    def highlightBlock(self, text: str) -> None:
+    def highlightBlock(self, text: str) -> None:  # noqa: N802 (Qt override)
         # Fenced code blocks tracked via block state (0 = normal, 1 = in fence)
         prev_state = self.previousBlockState()
         in_fence = prev_state == 1
         if re.match(r"^```", text):
-            self.setFormat(0, len(text), self._fence_format)
+            self.setFormat(0, len(text), self._fence_marker_format)
             self.setCurrentBlockState(0 if in_fence else 1)
             return
         if in_fence:

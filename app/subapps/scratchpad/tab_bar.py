@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QTabBar, QWidget
+from PySide6.QtWidgets import QPushButton, QTabBar, QWidget
 
 
 class TabBar(QTabBar):
@@ -14,12 +14,16 @@ class TabBar(QTabBar):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setTabsClosable(True)
+        self.setObjectName("SpTabBar")   # kit pill tabs (modern QTabBar rules)
+        # Close buttons are our own QSS-styled "✕" buttons (see add_tab): the
+        # native close icon can't be themed and vanishes on the light pill.
+        self.setTabsClosable(False)
         self.setMovable(True)
         self.setExpanding(False)
         self.setDrawBase(False)
+        self.setElideMode(Qt.ElideRight)
+        self.setUsesScrollButtons(True)
 
-        self.tabCloseRequested.connect(self._on_close_requested)
         self.currentChanged.connect(self._on_current_changed)
         self.tabMoved.connect(self._on_tab_moved)
 
@@ -31,6 +35,13 @@ class TabBar(QTabBar):
         self.blockSignals(True)
         idx = self.addTab(title)
         self.setTabData(idx, note_id)
+        close = QPushButton("✕")
+        close.setObjectName("SpTabClose")
+        close.setToolTip("Close tab")
+        close.setCursor(Qt.PointingHandCursor)
+        close.setFocusPolicy(Qt.NoFocus)
+        close.clicked.connect(lambda _checked=False, b=close: self._on_close_button(b))
+        self.setTabButton(idx, QTabBar.RightSide, close)
         self.blockSignals(False)
         return idx
 
@@ -77,6 +88,12 @@ class TabBar(QTabBar):
                 return i
         return -1
 
+    def _on_close_button(self, button: QPushButton) -> None:
+        for i in range(self.count()):
+            if self.tabButton(i, QTabBar.RightSide) is button:
+                self._on_close_requested(i)
+                return
+
     def _on_close_requested(self, idx: int) -> None:
         note_id = self.tabData(idx)
         if note_id:
@@ -92,7 +109,7 @@ class TabBar(QTabBar):
     def _on_tab_moved(self, _from: int, _to: int) -> None:
         self.tab_reordered.emit(self.all_note_ids())
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt override)
         if event.button() == Qt.MiddleButton:
             idx = self.tabAt(event.pos())
             if idx >= 0:
